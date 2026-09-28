@@ -1,0 +1,53 @@
+--- a/sp/src/game/server/gameinterface.cpp
++++ b/sp/src/game/server/gameinterface.cpp
+@@ -891,6 +891,15 @@ bool CServerGameDLL::GameInit( void )
+ // This is called when a new game is started. (restart, map)
+ bool CServerGameDLL::GameInit( void )
+ {
+ 	ResetGlobalState();
+ 	engine->ServerCommand( "exec game.cfg\n" );
+ 	engine->ServerExecute( );
++
++	// EZ2VR Quest posture: the Android launcher passes -mobile (see
++	// EZ2EngineActivity EZ2_GAME_ARGS). The overlay ships
++	// cfg/ez2vr_mobile.cfg in the game search path; exec it every new game
++	// AFTER game.cfg so the Quest tuning wins over retail defaults, while
++	// per-map cfgs (exec'd later) still win over it.
++	if ( CommandLine()->CheckParm( "-mobile" ) )
++	{
++		engine->ServerCommand( "exec ez2vr_mobile.cfg\n" );
++		engine->ServerExecute( );
++	}
+ 	CBaseEntity::sm_bAccurateTriggerBboxChecks = true;
+
+ // VERIFIED against entropy-zero/source-sdk-2013 branch ez2/mapbase
+ // (commit 918f420 era): GameInit sits at :892 with this exact shape, and
+ // tier0/icommandline.h is already included (:68) — no include hunk needed.
+ // If the mobile cfg is absent from the search path the exec is a harmless
+ // console warning, which is exactly how a desktop launch without -mobile
+ // behaves.
+
+ // VPC WIRING (same tree):
+ //   server: sp/src/game/server/server_ez2.vpc, $Project "Server (Entropy
+ //     Zero 2)", add under $Folder "Source Files":
+ //       $Folder "EZ2VR"
+ //       {
+ //           $File "ez2vr\ez2vr_cvars_server.cpp"
+ //       }
+ //     (copy native/game-server-ez2vr/ez2vr_cvars_server.cpp to
+ //     sp/src/game/server/ez2vr/; GAMENAME mod_ez2 already set; EZ/EZ2
+ //     defines already set)
+ //   client: sp/src/game/client/client_ez2.vpc, $Project "Client (Entropy
+ //     Zero 2)", add under $Folder "Source Files":
+ //       $Folder "EZ2VR"
+ //       {
+ //           $File "ez2vr\ez2vr_cvars_client.cpp"
+ //       }
+ //     (copy native/game-client-ez2vr/ez2vr_cvars_client.cpp to
+ //     sp/src/game/client/ez2vr/)
+ //   header: copy native/game-shared-ez2vr/ez2vr_cvars.h to
+ //     sp/src/game/shared/ez2vr/ez2vr_cvars.h (new dir; shared/ez2/
+ //     precedent exists) and add "$SRCDIR\game\shared\ez2vr" to
+ //     $AdditionalIncludeDirectories in BOTH vpc files, else the
+ //     #include "ez2vr_cvars.h" will not resolve.
+ // Then regenerate via sp/src/createentropyzeroproject.bat (entropyzero2.sln).

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Quest: VR-only launcher. Content is supplied by the user from their own
+         PC Steam copy (HL2 + Entropy: Zero 2). No Steam credentials in-app. -->
+
+    <!-- OpenXR runtime access. Both permissions are required: OPENXR binds the
+         Quest runtime as a normal app, OPENXR_SYSTEM is declared alongside it
+         by the proven EZ1 Quest manifest. Without these the engine cannot reach
+         a runtime at all, and without the <queries> block below package
+         visibility on API 30+ (Quest 3 / Android 12) hides the broker, so the
+         bind fails with a bare "no runtime found".
+         Ported from ez1-quest-engine/android/manifest/AndroidManifest.xml. -->
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
+    <queries>
+        <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
+        <intent>
+            <action android:name="org.khronos.openxr.OpenXRRuntimeService" />
+        </intent>
+        <intent>
+            <action android:name="org.khronos.openxr.OpenXRApiLayerService" />
+        </intent>
+    </queries>
+
+    <!-- Hands are optional: ez2vr_flashlight_mount is hand-or-head, so request
+         the permission without making the feature a requirement. -->
+    <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
+    <uses-feature android:name="oculus.software.handtracking" android:required="false" />
+
+    <!-- The depot lives in getExternalFilesDir(), which is app-scoped and needs
+         no runtime storage permission. These are only for a user who points the
+         SAF picker at a pre-Android-11 shared volume. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+
+    <uses-feature android:name="android.hardware.vr.headtracking"
+        android:required="true"
+        android:version="1" />
+    <!-- The engine's GLES/OpenXR slice needs GLES 3.2. Quest provides it;
+         declaring it keeps the app off unsupported headsets at install time. -->
+    <uses-feature android:glEsVersion="0x30002" android:required="true" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <application
+        android:label="EZ2 VR Launcher"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <!-- Lets Meta's system show the app in the headset library on any Quest
+             model rather than being filtered out on unknown hardware. -->
+        <meta-data
+            android:name="com.oculus.supportedDevices"
+            android:value="all" />
+
+        <activity
+            android:name=".EZ2LauncherActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".EZ2VrSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- Fail-loud reason screen. Its own process on purpose: a recovery
+             screen that shared the engine's process could not come up when the
+             engine is WEDGED rather than merely crashed, which is the case it
+             exists to cover. -->
+        <activity
+            android:name=".EZ2RecoveryActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":recovery"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:excludeFromRecents="true" />
+
+        <!-- Engine host. Started only after content presence + asset staging pass.
+             Mirrors the SourceVR flow (MainActivity extends NativeActivity and
+             sets engine env before super.onCreate) without reusing its code. -->
+        <activity
+            android:name=".EZ2EngineActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density"
+            android:resizeableActivity="false"
+            android:excludeFromRecents="true"
+            android:process=":engine">
+            <!-- The engine must not share the launcher's process: a native fault
+                 in liblauncher.so would take the launcher UI down with it and
+                 strand the user with no way back to the recovery screen. This
+                 mirrors the ":engine" process in the proven EZ1 manifest. -->
+            <intent-filter>
+                <action android:name="com.ez2vr.launcher.action.START_ENGINE" />
+                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+            <!-- NativeActivity reads this meta-data in onCreate and calls
+                 System.loadLibrary() on it. Without it the activity throws
+                 "NativeActivity cannot be instantiated without a native library
+                 name" the moment super.onCreate() is reached, so the engine host
+                 would crash on the very milestone that lands the native build.
+                 Value is the So name, not the file: liblauncher.so -> launcher.
+                 Confirmed against the EZ1 manifest, which declares the same
+                 value on the same NativeActivity-based engine path. libserver.so
+                 and libclient.so are dlopen'd from liblauncher.so via the .load
+                 graph under assets/ez2/native, not by the framework. -->
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="launcher" />
+        </activity>
+    </application>
+</manifest>

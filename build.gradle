@@ -1,0 +1,6 @@
+// Top-level build file for the EZ2-only Quest launcher.
+// Clean-room template modeled on the BEHAVIOR of SourceVR (profile -> import ->
+// stage -> NativeActivity launch), not a copy of its code or assets.
+plugins {
+    id("com.android.application") version "8.5.2" apply false
+}

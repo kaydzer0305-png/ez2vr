@@ -1,0 +1,19 @@
+# Gradle / Android Studio
+.gradle/
+build/
+local.properties
+captures/
+*.apk
+*.aab
+*.iml
+.idea/
+.cxx/
+
+# Native engine build output (see TRANSPLANT-A.md). These are injected by
+# .github/workflows/build-ez2-arm64.yml, never committed: the full ARM64 set is
+# tens of MB of artifacts the engine repo already produces.
+*.so
+
+# OS
+.DS_Store
+Thumbs.db

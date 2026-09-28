@@ -1,0 +1,63 @@
+plugins {
+    id("com.android.application")
+}
+
+android {
+    namespace = "com.ez2vr.launcher"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.ez2vr.launcher"
+        minSdk = 29
+        targetSdk = 32
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+        debug {
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    packaging {
+        jniLibs {
+            // Parity with the proven EZ1 Quest manifest, which ships
+            // android:extractNativeLibs="true": native libs are compressed in
+            // the APK and extracted to disk at install. The engine dlopen's a
+            // large set of libs on top of the System.loadLibrary("launcher")
+            // that NativeActivity does, and the extracted form is what that
+            // configuration has booted on Quest.
+            //
+            // The modern default (false) stores them uncompressed and maps them
+            // straight out of the APK, which is faster to install and still
+            // loads. Switch this to false only if the engine misbehaves with
+            // the extracted layout — do not flip it casually.
+            useLegacyPackaging = true
+        }
+    }
+}
+
+dependencies {
+    // The ONLY AndroidX library this app needs: DocumentFileNode adapts SAF
+    // DocumentFile onto EZ2SourceNode. appcompat was previously declared but
+    // never used (every Activity extends android.app.Activity against a
+    // framework theme), and it dragged in kotlin-stdlib-jdk7/jdk8 1.6.21, which
+    // duplicates classes in kotlin-stdlib 1.8.22 from core-ktx and fails
+    // checkDebugDuplicateClasses. Dropping it also keeps the APK small, which
+    // matters on a Quest launcher.
+    //
+    // DocumentFileNode deliberately does NOT call DocumentFile.getInputStream()
+    // — no 1.x release of this library has it. It goes through
+    // ContentResolver.openInputStream(DocumentFile.getUri()) instead.
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // Local JVM tests for the Android-free import/discovery logic.
+    testImplementation("junit:junit:4.13.2")
+}
