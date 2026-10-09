@@ -64,21 +64,17 @@ public class EZ2LauncherActivity extends Activity {
     /** Backstop for the engine-never-covers-us case, in ms. */
     private static final long ENGINE_COVER_TIMEOUT_MS = 10000L;
 
-    /**
-     * How long the launcher waits, after the engine covers it, before finishing.
-     *
-     * <p>Long enough for the shell's immersive transition to finish handing the
-     * runtime focus to the engine: measured on device, focus lands ~0.7 s after
-     * the engine activity resumes, and the shell only keeps it if the launcher
-     * task still exists. See {@link #onStop()}.
-     */
-    private static final long ENGINE_FINISH_DELAY_MS = 4000L;
-
-    /** True once this launcher has started the engine; gates the onStop finish. */
+    /** True once this launcher has started the engine; gates onStop bookkeeping. */
     private boolean engineStarted;
 
-    /** Guards the delayed finish so onStop cannot schedule it twice. */
-    private boolean finishScheduled;
+    /**
+     * True once the engine has covered us (onStop ran after a start). The
+     * backstop uses it to tell "engine never took" (finish, so a failed
+     * start cannot strand the user on a dead panel) from "engine has us
+     * covered" (stay alive but stopped -- destroying the launcher task makes
+     * VrShell go home and takes the engine's runtime focus with it).
+     */
+    private boolean coveredByEngine;
 
     /** Survives the finish() in onStop, so the next launch can spot a crash. */
     private SharedPreferences prefs;
@@ -268,9 +264,9 @@ public class EZ2LauncherActivity extends Activity {
     protected void onResume() {
         super.onResume();
         // The engine run that ended before this launch may have crashed. Now
-        // checked here rather than in onActivityResult, because the launcher
-        // finishes itself once the engine covers it (see onStop) and so never
-        // gets a result back.
+        // checked here rather than in onActivityResult, because the engine is
+        // started with startActivity (not forResult) and so never comes back
+        // with a result.
         if (engineCrashedSinceLastLaunch()) {
             EZ2RecoveryActivity.launch(this, EZ2RecoveryActivity.REASON_CRASH,
                     "The engine stopped unexpectedly and wrote "
@@ -285,43 +281,24 @@ public class EZ2LauncherActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        // Once the engine activity covers us, get out of the way. The shell has
-        // one immersive slot; a 2D panel left alive behind the engine makes the
-        // two contend, and the shell cycles focus instead of handing the OpenXR
-        // session VISIBLE/FOCUSED. Verified on device: with this finish removed
-        // the session sat at state=READY(2), rendering=0, indefinitely, while
-        // logcat showed "Switching to immersive app" every ~20-70s.
+        // Once the engine activity covers us, stay alive but stopped. The
+        // engine lives in its own task (see the manifest affinity note) and
+        // owns the immersive slot, so a backgrounded 2D panel with no window
+        // contends for nothing -- but DESTROYING the launcher task does:
+        // VrShell treats the task's death as the app going away, resumes the
+        // home app, and the engine's runtime session drops FOCUSED->VISIBLE
+        // exactly ENGINE_FINISH_DELAY_MS after begin used to (measured
+        // 2026-10-09, with and without a separate engine taskAffinity). The
+        // old finish() here was the focus killer, not the fix.
         //
-        // Finishing in onStop rather than immediately after startActivity is
-        // deliberate: an already-finished caller makes the engine start a
-        // background start, which fails the same way.
-        //
-        // The finish is DELAYED, and that is the part that actually unblocks the
-        // session. Logcat on device (15:13:07.1-07.3, run 6) shows the shell
-        // grants the engine's runtime client focus ~70 ms after xrBeginSession
-        // and then takes it straight back:
-        //
-        //   ClientMgrFocus: FocusedClient changed from  to com.ez2vr.launcher:engine:18013
-        //   ClientMgrFocus: FocusedClient changed from com.ez2vr.launcher:engine:18013 to com.oculus.vrshell:3249
-        //   VolumetricContentMonitor: Focused window changed to ...FocusPlaceholderActivity
-        //
-        // and the ordering is the cause: this launcher's task is destroyed in the
-        // same 200 ms window (wm_finish_activity ... EZ2LauncherActivity,
-        // app-request), the shell has no focused window left, so it puts its own
-        // FocusPlaceholderActivity up, and the engine is no longer the focused
-        // client. An OpenXR session only leaves XR_SESSION_STATE_READY once the
-        // runtime has focus, so the session sat at READY forever and the launcher
-        // timed out into the flat path. Finishing late lets the immersive
-        // transition complete and the engine keep focus; the panel is already
-        // backgrounded by then, so nothing is left contending for the slot.
-        if (engineStarted && !finishScheduled) {
-            finishScheduled = true;
-            getWindow().getDecorView().postDelayed(
-                    () -> {
-                        if (!isFinishing()) {
-                            finish();
-                        }
-                    }, ENGINE_FINISH_DELAY_MS);
+        // History: the finish was added 2026-10-03 against shell focus CYCLING
+        // (a live 2D panel behind the engine, "Switching to immersive app"
+        // every ~20-70 s, session stuck at READY). That cycling predates the
+        // frame-pump fix and may never have been the panel's fault; if it
+        // recurs with the panel merely stopped, revisit (e.g. finish only
+        // while the session is pre-SYNCHRONIZED).
+        if (engineStarted) {
+            coveredByEngine = true;
         }
     }
 
@@ -348,7 +325,7 @@ public class EZ2LauncherActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         // No engine branch here any more. The engine is started with
-        // startActivity() and this launcher finishes itself in onStop(), so there
+        // startActivity() and this launcher stays stopped behind it, so there
         // is no return trip; the crash check moved to onResume via the persisted
         // baseline. See engineCrashedSinceLastLaunch().
         if (requestCode != REQUEST_CONTENT_DIR || resultCode != RESULT_OK || data == null) {
@@ -523,8 +500,8 @@ public class EZ2LauncherActivity extends Activity {
         }
         note = "";
         // Record the crash-report count as the baseline for THIS engine run. The
-        // launcher finishes itself in onStop() (see below), so there is no return
-        // trip to compare against; the next launch compares against this.
+        // launcher stays stopped behind the engine, so there is no return trip
+        // to compare against; the next launch compares against this.
         rememberCrashBaseline(CrashProbe.countReports(this));
         engineStarted = true;
 
@@ -537,11 +514,11 @@ public class EZ2LauncherActivity extends Activity {
 
         // Do NOT finish() here. The system processes the start asynchronously and
         // an already-finished caller turns it into a background start, which is
-        // the other half of the same stuck-at-READY failure. onStop() finishes us
-        // once the engine actually covers us; this timeout is the backstop so a
-        // start that never takes cannot strand the user on a dead panel.
+        // the other half of the same stuck-at-READY failure. onStop() records
+        // coverage for the backstop; this timeout is the backstop so a start
+        // that never takes cannot strand the user on a dead panel.
         getWindow().getDecorView().postDelayed(() -> {
-            if (!isFinishing()) {
+            if (!coveredByEngine && !isFinishing()) {
                 Log.w(TAG, "engine did not cover us; finishing anyway");
                 finish();
             }
@@ -560,10 +537,9 @@ public class EZ2LauncherActivity extends Activity {
      *
      * <p>This used to be checked in {@code onActivityResult}, comparing against
      * a count taken moments earlier. There is no return trip any more -- the
-     * launcher finishes itself in {@link #onStop()} so it stops contending with
-     * the engine for the shell's immersive slot, which is what left the OpenXR
-     * session stuck at READY. So the baseline is persisted before each launch and
-     * the comparison happens on the NEXT launcher open instead. The cost is real:
+     * engine is started with startActivity (not forResult). So the baseline is
+     * persisted before each launch and the comparison happens on the NEXT
+     * launcher open instead. The cost is real:
      * a crash is reported one launch late rather than immediately.
      */
     private boolean engineCrashedSinceLastLaunch() {

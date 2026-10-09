@@ -134,6 +134,7 @@
             android:name=".EZ2EngineActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:taskAffinity="com.ez2vr.launcher.engine"
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density"
@@ -165,6 +166,15 @@
                  the focus cycling were real, but the cycle stopped when the
                  launcher stopped staying alive behind the engine (see
                  EZ2LauncherActivity.onStop), not when singleTask came out.
+
+                 taskAffinity (added 2026-10-09) puts the engine at the root of
+                 its own task. Without it the engine shares the launcher's task
+                 despite NEW_TASK, so the launcher's onStop finish destroys the
+                 task VrShell is handing focus to: the session reaches FOCUSED
+                 for ~4 s, then the shell resumes the home app
+                 (LightningLauncher here) and the session drops to VISIBLE.
+                 Verified: direct-launching this activity with no launcher task
+                 at all holds FOCUSED indefinitely.
 
                  Session-stall history, because the shape of this manifest is the
                  fix and the reasoning is easy to lose:
