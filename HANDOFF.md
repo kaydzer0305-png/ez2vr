@@ -1,5 +1,41 @@
 # EZ2 VR port — session handoff (2026-10-03)
 
+## Update (2026-10-09, wear-test) — VR scene renders in-headset; launcher path holds focus
+
+Wear-tested with a human in the Quest 3S (screen25.png, ez2vr13.log). The
+diagnostic scene renders in stereo with rock-solid head tracking, no ANR on
+button presses, and the full launcher->engine path now holds FOCUSED
+indefinitely (one immersive transition per launch, no cycling).
+
+Bugs found by the wear-test, all fixed and verified same session:
+- Projection matrix had three misplaced elements (vr_scene.cpp) -> quad
+  never rasterized (clear color only, live session). Caught by rendering
+  lineMajor raw: perfect B&W grid.
+- Eye/image indexing mismatch (image-major lookup vs eye-major store) put
+  eyes in each other's images on some frames.
+- Floor at LOCAL y=0 == head height at tracking start (measured y~0.001):
+  camera inside the ground plane. Floor now pinned 1.6 m below the head.
+- Fog permanently off: with it live every fragment came out fogColor
+  (vDist viz: white everywhere) despite proven poses/matrices/varyings.
+  Undiagnosed driver interaction; fog was only a distance cue.
+- uTime now CPU seconds (ns-through-float-sin is garbage on mobile GPUs);
+  lines widened to 3/2 px; marker to 3.5 m; input queue drained on the XR
+  worker (undrained controller input raised a real system ANR dialog).
+- The 4-second focus loss on the launcher path was the launcher's own
+  onStop finish(), not the runtime: VrShell resumes home when the launcher
+  task dies, even with the engine in its own task. The panel now stays
+  stopped (finish only if the engine never covers us), and
+  EZ2EngineActivity got the taskAffinity the code always claimed it had.
+  The 2026-10-03 cycling does not recur.
+
+Committed + pushed: engine `7c074baa` (wear-test fixes) on
+feat/sourcevr-parity, launcher `ba167b7` (stay-alive + affinity) on main.
+55/55 launcher tests green.
+
+Still open (unchanged): engine-through-the-seam rendering (toggles
+external-FBO path, not in this tree), content polish (npc_citizen convars,
+ambient wavs, flat-shot checker squares).
+
 ## Update (2026-10-09, later) — VR focus stall FIXED; session reaches FOCUSED
 
 The READY-forever stall was self-inflicted, not the runtime declining. The
