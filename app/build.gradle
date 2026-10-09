@@ -2,6 +2,11 @@ plugins {
     id("com.android.application")
 }
 
+// Native library staging lives in its own script: it is a build-output copy
+// step, not a packaging setting, and it must not run on every assemble.
+// See app/stage-engine-libs.gradle for why and how.
+apply from: file("stage-engine-libs.gradle")
+
 android {
     namespace = "com.ez2vr.launcher"
     compileSdk = 34

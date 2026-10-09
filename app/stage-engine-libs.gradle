@@ -1,0 +1,225 @@
+// Staging for the engine's arm64-v8a native libraries.
+//
+// The launcher repo cannot carry these: the set is ~300 MB (libserver.so alone
+// is ~98 MB) and it is a BUILD OUTPUT that changes with every engine commit. So
+// they are copied in from a sibling engine checkout at build time, exactly the
+// way the EZ1 pipeline collects them (`find build -name '*.so'`, plus four more
+// the build cannot produce on its own).
+//
+// Usage:
+//   ./gradlew :app:stageEngineLibs -Pez2.engineDir=../ez1-quest-engine
+// or set ez2.engineDir in local.properties (key: ez2.engineDir), which is where
+// local.properties already points at the SDK.
+//
+// :app:assembleDebug does NOT depend on this task. An APK with no libs is a
+// legitimate thing to build -- it is the launcher-only build, and the launcher's
+// native gate refuses to start the engine in it with a message saying so. That
+// separation is deliberate: not every launcher change should cost a 20-minute
+// engine rebuild.
+//
+// Instead, stageEngineLibs VERIFIES. Every name in assets/ez2/native/*.load must
+// be findable in the engine tree, and anything the engine build produced that
+// the graph does not declare is reported as drift. Both directions are errors:
+// a graph naming a library the build cannot produce would ship an APK that dies
+// in dlopen, and a build producing a library the graph does not name would ship
+// an APK whose graph lies about what it carries.
+
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+
+// Same parser contract as EZ2NativeGraph.java: one name per line, '#' starts a
+// comment that runs to end of line, blank lines ignored, duplicates dropped.
+// Kept in step with the Java by EZ2NativeGraphTest.
+def parseGraph(File graphFile) {
+    def names = []
+    graphFile.eachLine { raw ->
+        def hash = raw.indexOf('#')
+        def line = (hash < 0 ? raw : raw.substring(0, hash)).trim()
+        if (line && line.endsWith('.so') && !names.contains(line)) {
+            names << line
+        }
+    }
+    return names
+}
+
+def failUnless(boolean condition, String message) {
+    if (!condition) {
+        throw new GradleException(message)
+    }
+}
+
+tasks.register('stageEngineLibs') {
+    group = 'ez2vr'
+    description = 'Copies the engine ARM64 libraries into jniLibs and checks them against the native graph.'
+
+    // local.properties is where local.properties-style machine paths belong and
+    // is already read for sdk.dir, so prefer it, then -P, then the sibling default.
+    def localProps = new Properties()
+    def localPropsFile = rootProject.file('local.properties')
+    if (localPropsFile.exists()) {
+        localPropsFile.withInputStream { localProps.load(it) }
+    }
+    def engineDirValue = project.findProperty('ez2.engineDir') ?: localProps.getProperty('ez2.engineDir')
+
+    doLast {
+        // A relative engineDir is resolved against the ROOT, not the app module:
+        // a user who writes -Pez2.engineDir=../ez1-quest-engine means the tree
+        // next to this checkout, not one inside app/.
+        def engineRoot = engineDirValue
+                ? rootProject.file(engineDirValue.toString()).canonicalFile
+                : rootProject.file('../ez1-quest-engine').canonicalFile
+        failUnless(engineRoot.isDirectory(),
+                "ez2 engine tree not found at ${engineRoot}.\n" +
+                "Pass -Pez2.engineDir=<path> or set ez2.engineDir in local.properties.\n" +
+                "It must be a tree built for arm64-v8a (waf configure --android=aarch64,4.9,21 ... --build-games=ez2).")
+
+        def graphFile = file('src/main/assets/ez2/native/ez2vr.load')
+        failUnless(graphFile.isFile(),
+                "no native graph at ${graphFile}; the launcher cannot declare what it ships without one.")
+        def declared = parseGraph(graphFile)
+        failUnless(!declared.isEmpty(), "${graphFile} declares no libraries.")
+
+        def buildDir = new File(engineRoot, 'build')
+        failUnless(buildDir.isDirectory(),
+                "${buildDir} does not exist -- build the engine first:\n" +
+                "  cd ${engineRoot} && ./waf configure -T release --android=aarch64,4.9,21 --togles --disable-warns --build-games=ez2\n" +
+                "  ./waf build")
+
+        def jniDir = file('src/main/jniLibs/arm64-v8a')
+        jniDir.mkdirs()
+
+        // The engine build tree is nested (build/engine/libengine.so,
+        // build/game/server/libserver.so, ...), so index it by basename the way
+        // the EZ1 pipeline's `find build -name '*.so'` does. A flat lookup against
+        // build/ finds nothing.
+        def produced = [:]  // name -> File
+        buildDir.eachFileRecurse { f ->
+            if (f.isFile() && f.name.endsWith('.so') && !f.path.contains('external')) {
+                if (!produced.containsKey(f.name)) {
+                    produced[f.name] = f
+                }
+            }
+        }
+
+        def copied = []
+        def reused = []
+        def missing = []
+
+        // Libraries that do not come from either tree. libc++_shared.so is the
+        // NDK's C++ runtime: the engine is configured -stdlib=libc++ and links it
+        // dynamically, so it must ship or every libc++ call in the engine dies on
+        // first use. libhidapi has no implementation for this platform, so the
+        // engine tree ships a stub source and the EZ1 pipeline compiles it with
+        // the NDK clang. Both are named here rather than left to be discovered, so
+        // "this one comes from elsewhere" is documented instead of a surprise.
+        def fromNdk = ['libc++_shared.so']
+        def locallyBuilt = ['libhidapi.so']
+
+        // The NDK ships several ABIs' copies of libc++_shared.so, so the aarch64
+        // one has to be selected deliberately -- the wrong ABI fails at load, not
+        // at build.
+        def ndkDir = System.getenv('ANDROID_NDK_HOME')
+        def ndkCandidates = []
+        if (ndkDir) {
+            // toolchains/llvm/prebuilt/<host>/sysroot/usr/lib/<triple>/ -- not the
+            // NDK root, which holds docs/sources/toolchains instead.
+            def prebuilt = new File(ndkDir, 'toolchains/llvm/prebuilt')
+            if (prebuilt.isDirectory()) {
+                prebuilt.eachDir { host ->
+                    ndkCandidates << new File(host,
+                            'sysroot/usr/lib/aarch64-linux-android/libc++_shared.so')
+                }
+            }
+        }
+        def ndkLibcxx = ndkCandidates.find { it.isFile() }
+
+        declared.each { name ->
+            // Every name has to be located. Order of preference:
+            //   1. the engine build tree -- the 27 libs waf produces
+            //   2. the engine's own lib/ dir -- libSDL2.so
+            //   3. the vendored OpenXR dir -- libopenxr_loader.so
+            //   4. for the locallyBuilt set only, a copy already staged here
+            def src = produced[name]
+                    ?: { def c = new File(engineRoot, "lib/android/aarch64/${name}")
+                         c.isFile() ? c : null }()
+                    ?: { def c = new File(engineRoot, "external/openxr/lib/aarch64/${name}")
+                         c.isFile() ? c : null }()
+                    ?: { fromNdk.contains(name) ? ndkLibcxx : null }()
+            if (src != null) {
+                // Always refresh from the engine tree: these are build outputs and
+                // a stale copy left over from an earlier commit is exactly the
+                // failure this task exists to prevent.
+                Files.copy(src.toPath(), new File(jniDir, name).toPath(),
+                        StandardCopyOption.REPLACE_EXISTING)
+                copied << name
+            } else if (locallyBuilt.contains(name) && new File(jniDir, name).isFile()) {
+                reused << name
+            } else {
+                missing << name
+            }
+        }
+
+        // Drift the other way: something the build produced that the graph does
+        // not name. Reported, not silently accepted, because the graph is the
+        // launcher's contract and a stale one is how a boot dies in dlopen.
+        def undeclared = produced.keySet().findAll { !declared.contains(it) }
+
+        def lines = []
+        lines << "engine tree : ${engineRoot}"
+        lines << "graph       : ${declared.size()} declared"
+        lines << "staged      : ${copied.size()} refreshed from the engine tree"
+        if (reused) {
+            lines << "reused      : ${reused.size()} already staged (built by hand): ${reused.sort().join(', ')}"
+        }
+        lines << "destination : ${jniDir}"
+        if (undeclared) {
+            lines << "DRIFT       : build produced ${undeclared.size()} lib(s) the graph does not declare:"
+            undeclared.sort().each { lines << "               ${it}" }
+            lines << "             add them to ${graphFile} or they will ship undeclared."
+        }
+        if (missing) {
+            lines << "NOT FOUND   : ${missing.size()} declared lib(s) could not be located:"
+            missing.sort().each { lines << "               ${it}" }
+        }
+        logger.lifecycle(lines.join('\n'))
+
+        if (undeclared) {
+            throw new GradleException(
+                    "The native graph does not declare ${undeclared.size()} librar" +
+                    (undeclared.size() == 1 ? 'y' : 'ies') + " the engine build produces: " +
+                    undeclared.sort().join(', ') + ".\nAdd them to ${graphFile}, or remove them from the build.")
+        }
+
+        if (missing) {
+            def hint = ''
+            if (missing.contains('libhidapi.so')) {
+                // Single-quoted GString, and read the env var explicitly: inside a
+                // double-quoted Groovy string $ANDROID_NDK_HOME means "the Gradle
+                // property of that name", not the environment variable.
+                def ndk = System.getenv('ANDROID_NDK_HOME')
+                def clang = ndk
+                        ? new File(ndk, 'toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android21-clang')
+                        : null
+                def cc = (clang != null && clang.isFile())
+                        ? clang.absolutePath
+                        : '<ndk>/toolchains/llvm/prebuilt/<host>/bin/aarch64-linux-android21-clang'
+                hint = "\nlibhidapi.so is compiled from the engine tree's android/native/hidapi_stub.c " +
+                        "with the NDK clang; build it first, e.g.\n" +
+                        "  \"${cc}\" -shared -fPIC -O1 android/native/hidapi_stub.c -o ${jniDir}/libhidapi.so"
+            }
+            if (missing.contains('libc++_shared.so')) {
+                hint += "\nlibc++_shared.so is the NDK's arm64 C++ runtime and is not in the engine " +
+                        "tree. Set ANDROID_NDK_HOME to an NDK r20b install, or put the aarch64 " +
+                        "sysroot copy at " + jniDir + "/libc++_shared.so yourself."
+            }
+            throw new GradleException(
+                    "${missing.size()} declared librar" + (missing.size() == 1 ? 'y' : 'ies') +
+                    " could not be located in ${engineRoot}:\n  " + missing.sort().join('\n  ') +
+                    "\nAn APK missing these would die in dlopen with no diagnostic." + hint)
+        }
+
+        logger.lifecycle("Staged ${copied.size()} native libraries. Now :app:assembleDebug.")
+    }
+}

@@ -23,6 +23,15 @@
         </intent>
     </queries>
 
+    <!-- The engine opens a client socket during Host_Init even when running
+         single-player offline, and net_ws.cpp:2633 turns the failure into a fatal
+         "Couldn't allocate any client IP port". Without this the flat path renders
+         the loading screen and then dies at the connect step. Normal permission,
+         no runtime prompt; the engine never actually reaches the network because
+         -nosteam/-insecure are always passed. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Hands are optional: ez2vr_flashlight_mount is hand-or-head, so request
          the permission without making the feature a requirement. -->
     <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
@@ -54,15 +63,43 @@
             android:name="com.oculus.supportedDevices"
             android:value="all" />
 
+        <!-- Default boot path, read by EZ2BootMode.resolve(). "vr" starts
+             EZ2EngineActivity (OpenXR, immersive); "flat" starts
+             EZ2FlatEngineActivity (SDL, plain 2D surface, no OpenXR).
+             A launcher UI toggle overrides this and persists across launches,
+             because the engine activity is exported="false" and cannot be
+             started over adb, so flipping modes via the manifest would cost a
+             rebuild and reinstall per experiment. Same shape as EZ1's
+             com.ezquest.engine.BOOT_MODE, which lives at
+             ez1-quest-engine/android/manifest/AndroidManifest.xml:53-58. -->
+        <meta-data
+            android:name="com.ez2vr.launcher.BOOT_MODE"
+            android:value="vr" />
+
+        <!-- 2D import/settings UI. NOT the app's MAIN/LAUNCHER entry any more: VrShell
+             classifies a package as a VR app from the launch component, and a
+             package whose launcher activity has no VR category is brought up as
+             a 2D panel app (shell log: nativeAppLaunchConfiguration
+             "isVrApplication":false). With that classification the immersive
+             handoff never completed and the OpenXR session parked at
+             XR_SESSION_STATE_READY forever. EZ2EngineActivity is the launch
+             component now; this one is reached from it when content is missing,
+             or over adb for the import flow.
+             Deliberately NO com.oculus.intent.category.VR here either way: this
+             activity drives a SAF ACTION_OPEN_DOCUMENT_TREE picker, which is a
+             system 2D UI and cannot be operated from inside VR. Declaring the VR
+             category made the shell run a full immersive transition for a flat
+             window: Meta loading screen, then a bounce home, with SurfaceFlinger
+             reporting buffer=0x0. -->
         <activity
             android:name=".EZ2LauncherActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -84,12 +121,18 @@
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:excludeFromRecents="true" />
 
-        <!-- Engine host. Started only after content presence + asset staging pass.
-             Mirrors the SourceVR flow (MainActivity extends NativeActivity and
-             sets engine env before super.onCreate) without reusing its code. -->
+        <!-- Engine host, and the app's MAIN/LAUNCHER entry. VrShell decides whether a
+             package is a VR app from the launch component's categories, so this
+             activity — not the 2D import UI — is what has to carry them. The
+             categories are on the manifest filter AND set on the Intent at
+             startActivity time: this is an explicit start, so the filter alone
+             never reaches the launch Intent, and it is the launch Intent the
+             shell reads to decide whether to hand the display to an immersive
+             HMD session.
+             Started only after content presence + asset staging pass. -->
         <activity
             android:name=".EZ2EngineActivity"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
@@ -97,15 +140,50 @@
             android:resizeableActivity="false"
             android:excludeFromRecents="true"
             android:process=":engine">
-            <!-- The engine must not share the launcher's process: a native fault
-                 in liblauncher.so would take the launcher UI down with it and
-                 strand the user with no way back to the recovery screen. This
-                 mirrors the ":engine" process in the proven EZ1 manifest. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+            <!-- Also reachable explicitly, so the 2D UI can hand off to the
+                 engine without going through the library. -->
             <intent-filter>
                 <action android:name="com.ez2vr.launcher.action.START_ENGINE" />
                 <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
                 <category android:name="com.oculus.intent.category.VR" />
             </intent-filter>
+            <!-- The engine must not share the launcher's process: a native fault
+                 in liblauncher.so would take the launcher UI down with it and
+                 strand the user with no way back to the recovery screen. This
+                 mirrors the ":engine" process in the proven EZ1 manifest.
+
+                 launchMode="singleTask" matches the proven EZ1 engine activity. It
+                 was briefly removed here on a theory that it caused the shell's
+                 NEW_TASK|CLEAR_TASK re-launch to duplicate the task. That theory
+                 did not survive contact with the device: the duplicate task and
+                 the focus cycling were real, but the cycle stopped when the
+                 launcher stopped staying alive behind the engine (see
+                 EZ2LauncherActivity.onStop), not when singleTask came out.
+
+                 Session-stall history, because the shape of this manifest is the
+                 fix and the reasoning is easy to lose:
+                   - With this activity NOT the launch component, VrShell brought
+                     the package up as a 2D panel app
+                     (nativeAppLaunchConfiguration "isVrApplication":false) and the
+                     immersive handoff never completed. The runtime did grant the
+                     engine's client focus (ClientMgrFocus "FocusedClient changed
+                     ... to com.ez2vr.launcher:engine:<pid>"), then took it back
+                     200 ms later when the destroyed launcher task left it with no
+                     focused window and it raised FocusPlaceholderActivity again.
+                   - Launching this activity directly with the VR categories and
+                     no 2D UI in front still parked the session at READY, which
+                     ruled out the 2D UI as the sole cause and pointed at the
+                     package classification instead.
+                 Either way EZ2EngineActivity polls the XR loop through
+                 com.ezquest.engine.EngineActivity.nativeXrStatus() and hands off
+                 to EZ2FlatEngineActivity when it fails or fails to present within
+                 20s, so the flat path stays verifiable meanwhile. -->
             <!-- NativeActivity reads this meta-data in onCreate and calls
                  System.loadLibrary() on it. Without it the activity throws
                  "NativeActivity cannot be instantiated without a native library
@@ -120,5 +198,36 @@
                 android:name="android.app.lib_name"
                 android:value="launcher" />
         </activity>
+
+        <!-- Flat engine host. Boots the same liblauncher.so through
+             LauncherMainAndroid (launcher/android/main.cpp:256) with no OpenXR
+             involved, presenting to an ordinary 2D surface. This is the path that
+             makes the EZ2 game DLLs, the Mapbase AI backplane and the prediction
+             changes verifiable while the session stall above is unresolved.
+
+             Deliberately NO com.oculus.intent.category.VR and NO
+             org.khronos.openxr.intent.category.IMMERSIVE_HMD here, and no
+             intent-filter at all. Those categories make Meta's shell run a full
+             immersive transition; on a 2D window that produces the Meta loading
+             screen, then a bounce home with SurfaceFlinger reporting buffer=0x0.
+             The same trap the 2D launcher's filter documents, in reverse.
+
+             Also deliberately NO android.app.lib_name: this is an SDLActivity,
+             which loads its libraries itself via getLibraries(). The meta-data is
+             a NativeActivity hook and would be ignored here.
+
+             Same ":engine" process as the immersive host, for the same reason: a
+             native fault must not take the launcher UI down with it. Same
+             configChanges, so a rotation or a system UI shade does not restart
+             the engine underneath itself. -->
+        <activity
+            android:name=".EZ2FlatEngineActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density"
+            android:resizeableActivity="false"
+            android:excludeFromRecents="true"
+            android:process=":engine" />
     </application>
 </manifest>

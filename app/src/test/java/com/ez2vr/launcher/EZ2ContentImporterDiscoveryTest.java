@@ -6,6 +6,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.junit.Test;
 
 /**
@@ -29,15 +32,29 @@ public class EZ2ContentImporterDiscoveryTest {
             "\"GameInfo\"\n{\n\t\"game\"\t\t\"Half-Life 2\"\n"
                     + "\t\"title\"\t\"HALF-LIFE 2\"\n\t\"developer\"\t\"Valve\"\n}\n";
 
+    /** The Mapbase/Episode depots a self-contained EZ2 install bundles. */
+    private static FakeSourceNode[] bundledDepots() {
+        return new FakeSourceNode[] {
+                FakeSourceNode.dir("mapbase",
+                        FakeSourceNode.file("MAPBASE_CONTENT_USAGE.txt", "m")),
+                FakeSourceNode.dir("episodic",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
+                FakeSourceNode.dir("ep2",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
+        };
+    }
+
     /** steamapps/common holding the canonical Windows install. */
     private static FakeSourceNode steamCommon() {
-        return FakeSourceNode.dir("common",
-                FakeSourceNode.dir(EZ2Profile.GAME_DIR_WINDOWS,
-                        FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)),
-                FakeSourceNode.dir("Half-Life 2",
-                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
-                FakeSourceNode.dir("platform",
-                        FakeSourceNode.file("platform.vdf", "p")));
+        List<FakeSourceNode> kids = new ArrayList<>();
+        kids.add(FakeSourceNode.dir(EZ2Profile.GAME_DIR_WINDOWS,
+                FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("Half-Life 2",
+                FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("platform",
+                FakeSourceNode.file("platform.vdf", "p")));
+        kids.addAll(Arrays.asList(bundledDepots()));
+        return FakeSourceNode.dir("common", kids.toArray(new FakeSourceNode[0]));
     }
 
     @Test
@@ -63,13 +80,15 @@ public class EZ2ContentImporterDiscoveryTest {
 
     @Test
     public void linuxLowercaseModDirResolves() {
-        FakeSourceNode root = FakeSourceNode.dir("common",
-                FakeSourceNode.dir(EZ2Profile.GAME_DIR_LINUX,
-                        FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)),
-                FakeSourceNode.dir("hl2",
-                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
-                FakeSourceNode.dir("platform",
-                        FakeSourceNode.file("platform.vdf", "p")));
+        List<FakeSourceNode> kids = new ArrayList<>();
+        kids.add(FakeSourceNode.dir(EZ2Profile.GAME_DIR_LINUX,
+                FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("hl2",
+                FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("platform",
+                FakeSourceNode.file("platform.vdf", "p")));
+        kids.addAll(Arrays.asList(bundledDepots()));
+        FakeSourceNode root = FakeSourceNode.dir("common", kids.toArray(new FakeSourceNode[0]));
 
         EZ2ContentImporter.Plan plan = EZ2ContentImporter.plan(root);
 
@@ -79,13 +98,15 @@ public class EZ2ContentImporterDiscoveryTest {
 
     @Test
     public void renamedModDirFallsBackToGameInfoContent() {
-        FakeSourceNode root = FakeSourceNode.dir("common",
-                FakeSourceNode.dir("SomeModFolder",
-                        FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)),
-                FakeSourceNode.dir("HL2 (win32)",
-                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
-                FakeSourceNode.dir("platform",
-                        FakeSourceNode.file("platform.vdf", "p")));
+        List<FakeSourceNode> kids = new ArrayList<>();
+        kids.add(FakeSourceNode.dir("SomeModFolder",
+                FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("HL2 (win32)",
+                FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("platform",
+                FakeSourceNode.file("platform.vdf", "p")));
+        kids.addAll(Arrays.asList(bundledDepots()));
+        FakeSourceNode root = FakeSourceNode.dir("common", kids.toArray(new FakeSourceNode[0]));
 
         EZ2ContentImporter.Plan plan = EZ2ContentImporter.plan(root);
 
@@ -96,18 +117,43 @@ public class EZ2ContentImporterDiscoveryTest {
 
     @Test
     public void platformInsideHl2DirIsAccepted() {
-        FakeSourceNode root = FakeSourceNode.dir("common",
-                FakeSourceNode.dir(EZ2Profile.GAME_DIR_WINDOWS,
-                        FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)),
-                FakeSourceNode.dir("Half-Life 2",
-                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO),
-                        FakeSourceNode.dir("platform",
-                                FakeSourceNode.file("platform.vdf", "p"))));
+        List<FakeSourceNode> kids = new ArrayList<>();
+        kids.add(FakeSourceNode.dir(EZ2Profile.GAME_DIR_WINDOWS,
+                FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)));
+        kids.add(FakeSourceNode.dir("Half-Life 2",
+                FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO),
+                FakeSourceNode.dir("platform",
+                        FakeSourceNode.file("platform.vdf", "p"))));
+        kids.addAll(Arrays.asList(bundledDepots()));
+        FakeSourceNode root = FakeSourceNode.dir("common", kids.toArray(new FakeSourceNode[0]));
 
         EZ2ContentImporter.Plan plan = EZ2ContentImporter.plan(root);
 
         assertTrue(plan.describeProblems(), plan.isComplete());
         assertTrue("platform should be flagged as nested", plan.platformInsideHl2);
+    }
+
+    @Test
+    public void missingMapbaseEpisodicOrEp2IsReportedSpecifically() {
+        FakeSourceNode root = FakeSourceNode.dir("common",
+                FakeSourceNode.dir(EZ2Profile.GAME_DIR_WINDOWS,
+                        FakeSourceNode.file("gameinfo.txt", EZ2_GAMEINFO)),
+                FakeSourceNode.dir("Half-Life 2",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
+                FakeSourceNode.dir("platform",
+                        FakeSourceNode.file("platform.vdf", "p")));
+
+        EZ2ContentImporter.Plan plan = EZ2ContentImporter.plan(root);
+
+        assertFalse("mod/hl2/platform without Mapbase+Episodes must not import",
+                plan.isComplete());
+        assertNotNull(plan.mod);
+        assertTrue(plan.describeProblems(),
+                plan.describeProblems().contains("mapbase/ folder not found"));
+        assertTrue(plan.describeProblems(),
+                plan.describeProblems().contains("episodic/ folder not found"));
+        assertTrue(plan.describeProblems(),
+                plan.describeProblems().contains("ep2/ folder not found"));
     }
 
     @Test

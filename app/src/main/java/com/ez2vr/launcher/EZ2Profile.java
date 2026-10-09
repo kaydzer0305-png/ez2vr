@@ -31,9 +31,15 @@ public final class EZ2Profile {
     public static final String GAME_DIR_WINDOWS = "EntropyZero2";
     public static final String GAME_DIR_LINUX = "entropyzero2";
 
-    /** Depots/content roots the launcher expects next to the mod dir. */
+    /**
+     * Depots/content roots the launcher expects next to the mod dir. EZ2's
+     * gameinfo.txt mounts mapbase (shared Mapbase content) and the two
+     * Episode depots from |all_source_engine_paths|; a self-contained EZ2
+     * install bundles all of them.
+     */
     public static final List<String> REQUIRED_CONTENT_DIRS =
-            Collections.unmodifiableList(Arrays.asList("hl2", "platform"));
+            Collections.unmodifiableList(
+                    Arrays.asList("hl2", "platform", "mapbase", "episodic", "ep2"));
 
     /** Retail cfg leaves that must NOT be overwritten by VR defaults. */
     public static final List<String> RETAIL_CFG_LEAVES =

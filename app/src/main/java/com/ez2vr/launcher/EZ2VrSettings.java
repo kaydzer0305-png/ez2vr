@@ -84,6 +84,8 @@ public final class EZ2VrSettings {
      * Writes a debuggable snapshot of the same values into the write game dir.
      * The engine does not need to exec it (command line already carries them);
      * it exists so bug reports can attach one file with the full posture.
+     * It lives under the write game dir, which the engine no longer reads now
+     * that VALVE_GAME_PATH is the content root, so it is diagnostic-only.
      */
     public static File writeUserCfg(Context ctx) throws Exception {
         File out = EZ2ContentPaths.writeGameCfg(ctx, USER_CFG_NAME);

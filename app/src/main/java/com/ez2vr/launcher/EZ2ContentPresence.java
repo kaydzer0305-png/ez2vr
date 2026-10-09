@@ -14,6 +14,9 @@ import java.io.File;
  *   shared/EntropyZero2/gameinfo.txt   (or shared/entropyzero2/ on Linux copies)
  *   shared/hl2/gameinfo.txt
  *   shared/platform/ (optional loose files)
+ *   shared/mapbase/                    (Mapbase shared content — EZ2's gameinfo mounts it)
+ *   shared/episodic/                   (Episode One content)
+ *   shared/ep2/                        (Episode Two content)
  * </pre>
  */
 public final class EZ2ContentPresence {
@@ -35,7 +38,7 @@ public final class EZ2ContentPresence {
             File dir = new File(sharedRoot, required);
             if (!dir.isDirectory()) {
                 return new EZ2ContentPresence(false,
-                        required + "/ is missing — copy it from your HL2 Steam install");
+                        required + "/ is missing — copy it from your Entropy: Zero 2 Steam install");
             }
         }
         File hl2Info = new File(new File(sharedRoot, "hl2"), "gameinfo.txt");

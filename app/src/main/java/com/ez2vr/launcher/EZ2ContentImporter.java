@@ -21,14 +21,21 @@ import java.util.regex.Pattern;
  * permission is persisted, so later content updates need no re-pick and no
  * developer tools.
  *
+ * <p>Six depots are copied: the mod, hl2/, platform/, and the mapbase/,
+ * episodic/ and ep2/ content EZ2's gameinfo.txt mounts from
+ * |all_source_engine_paths|. A self-contained EZ2 install bundles all six
+ * beside each other inside the EntropyZero2/ install folder.
+ *
  * <p>Pure Java by design: it talks to {@link EZ2SourceNode}, never to SAF, so
  * the directory heuristics below are unit-testable off-device.
  *
- * <p><b>What the user is asked to pick.</b> The folder that CONTAINS the game
- * directories — normally {@code Steam/steamapps/common}, holding
- * {@code EntropyZero2/} and {@code Half-Life 2/}. Discovery also looks one
- * level down, so picking {@code steamapps/} or a hand-made folder of symlinks
- * works too. Directory names are matched loosely because Steam's own naming is
+ * <p><b>What the user is asked to pick.</b> Either the folder that CONTAINS the
+ * game directories — normally {@code Steam/steamapps/common}, holding
+ * {@code EntropyZero2/} and {@code Half-Life 2/} — or, for a self-contained
+ * EZ2 install, the {@code EntropyZero2/} folder itself, which bundles
+ * {@code entropyzero2/}, {@code hl2/} and {@code platform/} inside it.
+ * Discovery also looks one level down, so picking {@code steamapps/} or a
+ * hand-made folder of symlinks works too. Directory names are matched loosely because Steam's own naming is
  * inconsistent across platforms and libraries:
  *
  * <ul>
@@ -54,6 +61,17 @@ public final class EZ2ContentImporter {
     static final String DEPOT_HL2 = "hl2";
     static final String DEPOT_PLATFORM = "platform";
 
+    /**
+     * Mapbase shared content, Episode One and Episode Two. EZ2's gameinfo.txt
+     * mounts all three from |all_source_engine_paths| (shared_content_v7_0.vpk,
+     * ep1_pak.vpk, ep2_pak.vpk); a self-contained EZ2 install bundles them
+     * beside the mod dir. Without them the game boots, but Mapbase materials
+     * and Episodic scenes/sounds/models are missing.
+     */
+    static final String DEPOT_MAPBASE = "mapbase";
+    static final String DEPOT_EPISODIC = "episodic";
+    static final String DEPOT_EP2 = "ep2";
+
     private static final int BUF = 64 * 1024;
     private static final int GAMEINFO_PROBE_BYTES = 4096;
 
@@ -75,22 +93,30 @@ public final class EZ2ContentImporter {
         public final EZ2SourceNode mod;
         public final EZ2SourceNode hl2;
         public final EZ2SourceNode platform;
+        public final EZ2SourceNode mapbase;
+        public final EZ2SourceNode episodic;
+        public final EZ2SourceNode ep2;
         /** True when platform/ lives inside the HL2 dir rather than beside it. */
         public final boolean platformInsideHl2;
         public final List<String> problems;
 
         Plan(EZ2SourceNode base, EZ2SourceNode mod, EZ2SourceNode hl2,
-             EZ2SourceNode platform, boolean platformInsideHl2, List<String> problems) {
+             EZ2SourceNode platform, EZ2SourceNode mapbase, EZ2SourceNode episodic,
+             EZ2SourceNode ep2, boolean platformInsideHl2, List<String> problems) {
             this.base = base;
             this.mod = mod;
             this.hl2 = hl2;
             this.platform = platform;
+            this.mapbase = mapbase;
+            this.episodic = episodic;
+            this.ep2 = ep2;
             this.platformInsideHl2 = platformInsideHl2;
             this.problems = problems;
         }
 
         public boolean isComplete() {
-            return problems.isEmpty() && mod != null && hl2 != null && platform != null;
+            return problems.isEmpty() && mod != null && hl2 != null && platform != null
+                    && mapbase != null && episodic != null && ep2 != null;
         }
 
         int score() {
@@ -98,6 +124,9 @@ public final class EZ2ContentImporter {
             if (mod != null) n += 2;
             if (hl2 != null) n += 2;
             if (platform != null) n += 1;
+            if (mapbase != null) n += 1;
+            if (episodic != null) n += 1;
+            if (ep2 != null) n += 1;
             return n;
         }
 
@@ -120,7 +149,7 @@ public final class EZ2ContentImporter {
      */
     public static Plan plan(EZ2SourceNode root) {
         if (root == null || !root.isDirectory()) {
-            return new Plan(null, null, null, null, false,
+            return new Plan(null, null, null, null, null, null, null, false,
                     listOf("That folder could not be read. Pick it again."));
         }
         Plan best = null;
@@ -140,10 +169,11 @@ public final class EZ2ContentImporter {
             }
         }
         if (best.score() == 0) {
-            return new Plan(root, null, null, null, false, listOf(
+            return new Plan(root, null, null, null, null, null, null, false, listOf(
                     "No Half-Life 2 or Entropy: Zero 2 folder under:\n" + root.name()
                             + "\n\nPick the folder that CONTAINS them — on a PC that is\n"
-                            + "usually Steam/steamapps/common."));
+                            + "usually Steam/steamapps/common — or the EntropyZero2 folder\n"
+                            + "itself on a self-contained install."));
         }
         return best;
     }
@@ -196,6 +226,12 @@ public final class EZ2ContentImporter {
             platform = dirNamed(base, DEPOT_PLATFORM);
         }
 
+        // Mapbase/Episode depots sit beside the mod dir inside a self-contained
+        // EZ2 install (mapbase has no gameinfo.txt, so plain name lookup).
+        EZ2SourceNode mapbase = dirNamed(base, DEPOT_MAPBASE);
+        EZ2SourceNode episodic = dirNamed(base, DEPOT_EPISODIC);
+        EZ2SourceNode ep2 = dirNamed(base, DEPOT_EP2);
+
         List<String> problems = new ArrayList<>();
         if (mod == null) {
             problems.add("Entropy: Zero 2 folder not found (expected one named "
@@ -208,11 +244,21 @@ public final class EZ2ContentImporter {
         if (platform == null) {
             problems.add("platform/ folder not found beside or inside the Half-Life 2 folder.");
         }
+        if (mapbase == null) {
+            problems.add("mapbase/ folder not found — it ships inside the Entropy: Zero 2 "
+                    + "install and EZ2 cannot render its materials without it.");
+        }
+        if (episodic == null) {
+            problems.add("episodic/ folder not found — it ships inside the Entropy: Zero 2 install.");
+        }
+        if (ep2 == null) {
+            problems.add("ep2/ folder not found — it ships inside the Entropy: Zero 2 install.");
+        }
         if (mod == base && hl2 == null) {
             problems.add("You picked the EntropyZero2 folder itself. Pick its PARENT "
                     + "instead, so Half-Life 2 can be found next to it.");
         }
-        return new Plan(base, mod, hl2, platform, insideHl2, problems);
+        return new Plan(base, mod, hl2, platform, mapbase, episodic, ep2, insideHl2, problems);
     }
 
     private static EZ2SourceNode findByGameInfo(List<EZ2SourceNode> dirs, Pattern needle) {
@@ -363,6 +409,9 @@ public final class EZ2ContentImporter {
         List<Job> jobs = new ArrayList<>();
         jobs.add(new Job(plan.mod, EZ2Profile.GAME_DIR_WINDOWS));
         jobs.add(new Job(plan.hl2, DEPOT_HL2));
+        jobs.add(new Job(plan.mapbase, DEPOT_MAPBASE));
+        jobs.add(new Job(plan.episodic, DEPOT_EPISODIC));
+        jobs.add(new Job(plan.ep2, DEPOT_EP2));
         if (plan.platform != null) {
             // When platform/ sits INSIDE the HL2 dir it is already covered by
             // the hl2 job, and is also wanted at the depot root. Copying it

@@ -17,3 +17,8 @@ captures/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local device artifacts (adb-pulled logs, screencaps). Evidence for the
+# session, never part of the build.
+*.log
+screen*.png

@@ -21,7 +21,9 @@
 #
 # CONTENT (user-supplied from their own Steam install — never redistributed)
 # In-app: launcher -> "Import from PC Steam folder" -> pick the folder that
-# CONTAINS Half-Life 2/ and EntropyZero2/ (usually Steam/steamapps/common).
+# CONTAINS Half-Life 2/ and EntropyZero2/ (usually Steam/steamapps/common) —
+# or, for a self-contained EZ2 install, the EntropyZero2/ folder itself,
+# which bundles entropyzero2/, hl2/ and platform/ inside it.
 # Copies over SAF; re-import picks up Steam updates (unchanged files skipped).
 #   shared/EntropyZero2/gameinfo.txt  (or shared/entropyzero2/ for Linux copies)
 #   shared/hl2/gameinfo.txt
@@ -34,8 +36,9 @@
 #   ./gradlew :app:assembleDebug          # APK -> app/build/outputs/apk/debug/
 #   ./gradlew :app:testDebugUnitTest      # local JVM tests, no device needed
 # Android Studio (Arctic Fox+) also works; it uses the same wrapper.
-# The launcher UI builds and runs. Engine launch stays gated until native libs
-# exist (see below) and logs exactly what is missing.
+# Engine launch stays gated until native libs exist (see below) and logs
+# exactly what is missing; with the staged engine libs the flat boot path
+# renders on device (see HANDOFF.md for where the VR-port work stands).
 #
 # CI — one APK, engine included
 #   .github/workflows/build-ez2-arm64.yml in ez1-quest-engine builds the whole
@@ -46,8 +49,8 @@
 #   build-android-arm64.yml — the proven EZ1 path is left runnable).
 #   Requires EZ2Launcher to be published as a git repo; the workflow takes it as
 #   the `launcher_repo` input and fails with an actionable message if unset.
-#   `build_games` defaults to ez1 because the `ez2` waf profile does not exist
-#   yet (TRANSPLANT-A M1) — until then the APK carries the EZ1 game DLLs.
+#   `build_games` defaults to ez2: the `ez2` waf profile exists (TRANSPLANT-A
+#   M1/M2), so the APK carries the EZ2 game DLLs.
 #
 # ENGINE ENV CONTRACT
 #   setupEngineEnvironment() exports the EZ2_* names (the forward contract for
@@ -70,7 +73,17 @@
 #   OPENXR_SYSTEM permissions, the runtime-broker <queries> block, GLES 3.2,
 #   supportedDevices, :engine process, resizeableActivity=false, and the VR
 #   categories on the launch Intent (not just the manifest filter).
-# - 19 local JVM tests over the Android-free discovery/copy logic.
+# - Flat-SDL boot path ported (EZ2FlatEngineActivity): boots monoscopic, loads
+#   all 31 native modules, mounts the EZ2 mod, renders the Source loading
+#   screen. The VR path falls back to it automatically when no session comes
+#   up, and a manifest/toggle switch (adb extra: `--es boot_mode flat`) selects
+#   between them.
+# - Native-graph gate: the .load manifest is parsed on device and checked
+#   against the installed libs, not just for existence.
+# - Switch-to-flat/VR boot toggle on the launcher, plus adb auto_launch /
+#   boot_mode extras for driving either path headless.
+# - 54 local JVM tests over the Android-free discovery/copy logic, the native
+#   graph parser, the boot-mode resolver, and the engine env builders.
 # - Fail-loud diagnostics ported from the EZ1 port (diag/): session log,
 #   Java crash capture, ANR watchdog, Downloads export, and
 #   EZ2RecoveryActivity. Every engine refusal now shows a reason on the
@@ -89,7 +102,9 @@
 #   ez1-quest-engine/android/java/com/ezquest/engine/       (19 launcher classes,
 #       including the diag/ subsystem ported here)
 # It has a flat-SDL boot path plus a VR path with native fallback; EZ2Launcher
-# has the VR path only. Porting that fallback is listed under remaining work.
+# now has both — the VR path (EZ2EngineActivity) and the flat path
+# (EZ2FlatEngineActivity) — selected by the com.ez2vr.launcher.BOOT_MODE
+# meta-data, the launcher toggle, or the adb boot_mode extra.
 #
 # HARD REMAINING WORK (native — the bulk of a real port)
 # NATIVE CONTRACT (started — see native/):
@@ -99,13 +114,11 @@
 # - native/ez2vr_mobile_hook.patch — GameInit -mobile exec (anchored to
 #   source-sdk-2013 sp gameinterface.cpp CServerGameDLL::GameInit)
 # - native/ez2vr_argv_snippet.cpp — EZ2_GAME_ARGS env -> argv merge reference
-# 1. Build Mapbase-based Android ARM64 libs for EZ2 from the open
-#    entropy-zero ez2/mapbase branch: liblauncher.so, libengine-adjacent set,
-#    and EZ2's libserver.so/libclient.so with VR input (OpenXR) patches.
-#    SourceVR's entropyzero.load blobs (32 libs, EP2-SDK based) canNOT be reused
-#    for Mapbase EZ2 — expect entity/code mismatch crashes if attempted.
-#    (You already have ez1-quest-engine/ + source-sdk-2013-ez1/ locally —
-#    that is the right starting point for the EZ2/Mapbase engine fork.)
+# 1. ~~Build Mapbase-based Android ARM64 libs for EZ2~~ DONE — the ez1-
+#    quest-engine builds the ez2 profile for aarch64 and the APK carries
+#    those libs. Current blocker there is the `CUtlRBTree overflow!` engine
+#    error during content load (see HANDOFF.md); a fatal-backtrace hook is
+#    wired in tier0/launcher to capture its stack.
 #    See TRANSPLANT-A.md for the staged milestones M0-M4.
 # 2. Author real overlay/vr assets under app/src/main/assets/ez2/.
 #    Overlay cfgs ship today (ez2vr_boot.cfg, ez2vr_mobile.cfg,

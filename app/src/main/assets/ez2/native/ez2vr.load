@@ -1,0 +1,78 @@
+# ez2vr native runtime graph -- Entropy: Zero 2 on Quest (arm64-v8a)
+#
+# WHAT THIS FILE IS
+# The declaration of every native library the EZ2 engine needs at runtime. It is
+# the source of truth for two things:
+#
+#   1. tools/stage-engine-libs.gradle (task :app:stageEngineLibs) copies exactly
+#      these names into app/src/main/jniLibs/arm64-v8a/ and FAILS if any of them
+#      cannot be found, naming what is missing.
+#   2. EZ2EngineActivity.verifyNativeGraph() parses it on device and checks each
+#      name against the libs actually installed in the APK, so the launcher
+#      fails loudly on a partial engine instead of dying in dlopen.
+#
+# WHY IT EXISTS AT ALL, GIVEN NOTHING READS IT
+# The engine logs SOURCEVR_RUNTIME_GRAPH (the staged copy's path) at
+# launcher/android/main.cpp:249 and then ignores it -- there is no .load parser
+# in the engine. The engine loads liblauncher.so via System.loadLibrary and the
+# rest by ordinary dlopen out of the APK's extracted native lib dir. So an
+# earlier version of this file was a bare token that only had to EXIST to get
+# EZ2EngineActivity.hasNativeGraph() past its gate, which made that check
+# impossible to fail. Making it a real manifest costs nothing and turns it into
+# a check that means something. Keep the format deliberately boring: one library
+# name per line, '#' comments, blank lines ignored.
+#
+# THE SET (31 libraries)
+# 27 from the engine build tree (`find build -name '*.so'`), which is the same
+# collection the proven EZ1 pipeline packages, plus four more the build cannot
+# produce on its own. The engine dlopen()s only three of these by name
+# (libengine.so, libinputsystem.so, liblauncher.so); the rest are resolved by the
+# engine's own module search over the native lib dir, so all of them must ship.
+#
+#   libSDL2.so          the engine's platform layer, built by the tree
+#   libopenxr_loader.so Khronos loader; the tree's copy is vendored under
+#                       external/openxr, CI fetches the same lib from the AAR
+#   libc++_shared.so    NDK r20b arm64 runtime, required because the engine is
+#                       built -stdlib=libc++ and links it dynamically
+#   libhidapi.so        built from android/native/hidapi_stub.c (see the Gradle
+#                       task; there is no other hidapi for this platform)
+#
+# IF YOU EDIT THIS: re-run :app:stageEngineLibs, which cross-checks the manifest
+# against the engine build tree and reports drift. Adding a library to the
+# engine build means adding it here too, or the launcher will refuse to start
+# with a name it does not recognise.
+
+# --- engine build tree (27) ---
+libclient.so
+libdatacache.so
+libengine.so
+libfilesystem_stdio.so
+libGameUI.so
+libinputsystem.so
+liblauncher.so
+libmaterialsystem.so
+libscenefilecache.so
+libserver.so
+libServerBrowser.so
+libshaderapidx9.so
+libsoundemittersystem.so
+libsourcevr.so
+libstdshader_dx9.so
+libsteam_api.so
+libstudiorender.so
+libtier0.so
+libtogl.so
+libvaudio_minimp3.so
+libvaudio_opus.so
+libvgui2.so
+libvguimatsurface.so
+libvideo_services.so
+libvphysics.so
+libvstdlib.so
+libvtex_dll.so
+
+# --- supplied from outside the build tree (4) ---
+libSDL2.so
+libopenxr_loader.so
+libc++_shared.so
+libhidapi.so

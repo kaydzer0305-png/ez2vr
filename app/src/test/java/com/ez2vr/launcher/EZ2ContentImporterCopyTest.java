@@ -52,7 +52,18 @@ public class EZ2ContentImporterCopyTest {
                 FakeSourceNode.dir("Half-Life 2",
                         FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
                 FakeSourceNode.dir("platform",
-                        FakeSourceNode.fileOfSize("platform.vdf", 5)));
+                        FakeSourceNode.fileOfSize("platform.vdf", 5)),
+                FakeSourceNode.dir("mapbase",
+                        FakeSourceNode.fileOfSize("MAPBASE_CONTENT_USAGE.txt", 1)),
+                FakeSourceNode.dir("episodic",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
+                FakeSourceNode.dir("ep2",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)));
+    }
+
+    private long totalSourceBytes() {
+        // gameinfo + dll + hl2 gameinfo + platform.vdf + mapbase txt + 2 episode gameinfos
+        return ez2InfoBytes + 10 + hl2InfoBytes + 5 + 1 + 2 * hl2InfoBytes;
     }
 
     private static EZ2ContentImporter.CancelSignal never() {
@@ -76,10 +87,10 @@ public class EZ2ContentImporterCopyTest {
 
         assertFalse(stats.cancelled);
         assertTrue(stats.isComplete());
-        assertEquals(4, stats.filesTotal);
-        assertEquals(4, stats.filesCopied);
+        assertEquals(7, stats.filesTotal);
+        assertEquals(7, stats.filesCopied);
         assertEquals(0, stats.filesSkipped);
-        assertEquals(ez2InfoBytes + 10 + hl2InfoBytes + 5, stats.bytesCopied);
+        assertEquals(totalSourceBytes(), stats.bytesCopied);
 
         assertReadable(new File(depot, EZ2Profile.GAME_DIR_WINDOWS + "/gameinfo.txt"),
                 EZ2_GAMEINFO);
@@ -87,6 +98,10 @@ public class EZ2ContentImporterCopyTest {
                 EZ2Profile.GAME_DIR_WINDOWS + "/bin/steam_api64.dll").length());
         assertReadable(new File(depot, "hl2/gameinfo.txt"), HL2_GAMEINFO);
         assertEquals(5, new File(depot, "platform/platform.vdf").length());
+        assertTrue("mapbase depot staged",
+                new File(depot, "mapbase/MAPBASE_CONTENT_USAGE.txt").isFile());
+        assertReadable(new File(depot, "episodic/gameinfo.txt"), HL2_GAMEINFO);
+        assertReadable(new File(depot, "ep2/gameinfo.txt"), HL2_GAMEINFO);
     }
 
     @Test
@@ -97,7 +112,7 @@ public class EZ2ContentImporterCopyTest {
         EZ2ContentImporter.CopyStats second = EZ2ContentImporter.copy(plan, depot, null, never());
 
         assertEquals("second import should copy nothing", 0, second.filesCopied);
-        assertEquals(4, second.filesSkipped);
+        assertEquals(7, second.filesSkipped);
         assertEquals(0, second.bytesCopied);
     }
 
@@ -112,7 +127,7 @@ public class EZ2ContentImporterCopyTest {
         EZ2ContentImporter.CopyStats second = EZ2ContentImporter.copy(plan, depot, null, never());
 
         assertEquals(1, second.filesCopied);
-        assertEquals(3, second.filesSkipped);
+        assertEquals(6, second.filesSkipped);
         assertEquals(10, steamDll.length());
     }
 
@@ -124,7 +139,13 @@ public class EZ2ContentImporterCopyTest {
                 FakeSourceNode.dir("Half-Life 2",
                         FakeSourceNode.zeroLengthFile("gameinfo.txt", HL2_GAMEINFO)),
                 FakeSourceNode.dir("platform",
-                        FakeSourceNode.fileOfSize("platform.vdf", 5)));
+                        FakeSourceNode.fileOfSize("platform.vdf", 5)),
+                FakeSourceNode.dir("mapbase",
+                        FakeSourceNode.fileOfSize("MAPBASE_CONTENT_USAGE.txt", 1)),
+                FakeSourceNode.dir("episodic",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)),
+                FakeSourceNode.dir("ep2",
+                        FakeSourceNode.file("gameinfo.txt", HL2_GAMEINFO)));
         EZ2ContentImporter.Plan plan = EZ2ContentImporter.plan(root);
 
         EZ2ContentImporter.copy(plan, depot, null, never());
@@ -193,8 +214,8 @@ public class EZ2ContentImporterCopyTest {
 
         assertFalse("listener should have fired", totals.isEmpty());
         assertTrue("bytesTotal should be the real denominator",
-                totals.get(0) == ez2InfoBytes + 10 + hl2InfoBytes + 5);
-        assertTrue(fileCounts.get(0) == 4);
+                totals.get(0) == totalSourceBytes());
+        assertTrue(fileCounts.get(0) == 7);
     }
 
     @Test
