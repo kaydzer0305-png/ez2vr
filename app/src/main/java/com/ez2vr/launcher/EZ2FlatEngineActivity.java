@@ -196,7 +196,7 @@ public class EZ2FlatEngineActivity extends SDLActivity {
         EZ2EngineEnv.Snapshot snap = EZ2EngineEnv.resolve(this, userCfgNote);
         String extraArgs = EZ2VrSettings.buildExtraArgs(this);
         Map<String, String> env = EZ2EngineEnv.env(snap, /* vrEnabled= */ false, userCfgNote,
-                extraArgs);
+                extraArgs, EZ2VrSettings.ffr(this), EZ2VrSettings.perfMode(this));
         EZ2EngineEnv.export(env);
 
         String argv = EZ2EngineEnv.flatArgv(

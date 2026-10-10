@@ -74,6 +74,32 @@ public final class EZ2EngineEnv {
      */
     public static final String ENV_EXTERNAL_GL = "EZQUEST_VR_EXTERNAL_GL";
 
+    /**
+     * Fixed-foveated rendering master switch, read by the XR worker when it
+     * applies the Meta framebuffer extensions. The VR Settings menu owns the
+     * value ({@code ez2vr_ffr_level 0} means off); {@code =0} on flat, where
+     * there is no runtime to apply it to.
+     */
+    public static final String ENV_FFR = "EZQUEST_VR_FFR";
+
+    /**
+     * Foveation level for the runtime, {@code 0..4} (the runtime's own scale;
+     * the menu's {@code 0..3} passes straight through, so the top runtime
+     * step stays reserved until the menu grows a fourth). Read alongside
+     * {@link #ENV_FFR}; meaningless when that is {@code 0}.
+     */
+    public static final String ENV_FFR_LEVEL = "EZQUEST_VR_FFR_LEVEL";
+
+    /**
+     * Performance posture, {@code 0 quality, 1 balanced, 2 performance}, owned
+     * by the VR Settings menu. Currently informational: the engine's lever
+     * sets (fill-rate, particles, bone setup) have not landed yet, so nothing
+     * reads it — but the value rides the same prefs-to-env path as
+     * {@link #ENV_FFR_LEVEL}, which is what will consume it, and the on-device
+     * env dump already shows what the menu chose.
+     */
+    public static final String ENV_PERF_MODE = "EZQUEST_VR_PERF_MODE";
+
     private EZ2EngineEnv() {}
 
     /** Everything the env and argv builders need, already resolved to strings. */
@@ -207,9 +233,13 @@ public final class EZ2EngineEnv {
      *                   last in {@link #ENV_GAME_ARGS} so they win over boot
      *                   defaults on the VR path exactly as they do in
      *                   {@link #flatArgv} on flat
+     * @param ffrLevel menu's {@code ez2vr_ffr_level} ({@code 0..3}, clamped),
+     *                 driving {@link #ENV_FFR} + {@link #ENV_FFR_LEVEL}
+     * @param perfMode menu's {@code ez2vr_performance_mode} ({@code 0..2}),
+     *                 exported as {@link #ENV_PERF_MODE}
      */
     public static Map<String, String> env(Snapshot s, boolean vrEnabled, String userCfgNote,
-                                          String convarArgs) {
+                                          String convarArgs, int ffrLevel, int perfMode) {
         Map<String, String> m = new LinkedHashMap<>();
         // Forward contract.
         m.put("EZ2_GAME", s.modName);
@@ -272,6 +302,14 @@ public final class EZ2EngineEnv {
         // reader, so exporting 0 there is inert documentation.
         m.put(ENV_TRY_ENGINE, vrEnabled ? "1" : "0");
         m.put(ENV_EXTERNAL_GL, vrEnabled ? "1" : "0");
+        // Menu-owned frame pacing. The runtime applies FFR + refresh when the
+        // XR session comes up (see EZQuestVrApplyFfrAndRefresh); refresh stays
+        // on the runtime default (90 Hz) until the menu owns a refresh pref.
+        int ffr = Math.max(0, Math.min(3, ffrLevel));
+        m.put(ENV_FFR, vrEnabled && ffr > 0 ? "1" : "0");
+        m.put(ENV_FFR_LEVEL, String.valueOf(ffr));
+        m.put(ENV_PERF_MODE,
+                String.valueOf(Math.max(0, Math.min(2, perfMode))));
         // Stereo-path opt-out. Must be set explicitly on both paths so the mode
         // never depends on a race between the XR worker and engine init.
         m.put(ENV_VR_ENABLE, vrEnabled ? "1" : "0");

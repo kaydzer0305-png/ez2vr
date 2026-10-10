@@ -131,14 +131,14 @@ public class EZ2EngineEnvTest {
     @Test
     public void envDisablesTheStereoPathOnFlat() {
         Map<String, String> flat =
-                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "");
+                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "", 0, 0);
         assertEquals("0", flat.get(EZ2EngineEnv.ENV_VR_ENABLE));
     }
 
     @Test
     public void envEnablesTheStereoPathOnVr() {
         Map<String, String> vr =
-                EZ2EngineEnv.env(snapshot("/mod"), true, "/cfg/ez2vr_user.cfg", "");
+                EZ2EngineEnv.env(snapshot("/mod"), true, "/cfg/ez2vr_user.cfg", "", 0, 0);
         assertEquals("1", vr.get(EZ2EngineEnv.ENV_VR_ENABLE));
     }
 
@@ -149,8 +149,8 @@ public class EZ2EngineEnvTest {
      */
     @Test
     public void stereoOptOutIsOptOutOnly() {
-        assertEquals("1", EZ2EngineEnv.env(snapshot("/mod"), true, "", "").get("EZQUEST_VR_ENABLE"));
-        assertEquals("0", EZ2EngineEnv.env(snapshot("/mod"), false, "", "").get("EZQUEST_VR_ENABLE"));
+        assertEquals("1", EZ2EngineEnv.env(snapshot("/mod"), true, "", "", 0, 0).get("EZQUEST_VR_ENABLE"));
+        assertEquals("0", EZ2EngineEnv.env(snapshot("/mod"), false, "", "", 0, 0).get("EZQUEST_VR_ENABLE"));
     }
 
     /**
@@ -161,7 +161,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void envCarriesTheNamesTheCurrentEngineReads() {
         Map<String, String> env =
-                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "");
+                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "", 0, 0);
         assertEquals("/data/app/files", env.get("APP_DATA_PATH"));
         assertEquals("/data/app/lib/arm64", env.get("NATIVE_LIB_DIR"));
         assertEquals("/data/app/lib/arm64", env.get("APP_LIB_PATH"));
@@ -175,7 +175,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void envCarriesTheEz2ForwardContract() {
         Map<String, String> env =
-                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "");
+                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "", 0, 0);
         assertEquals("EntropyZero2", env.get("EZ2_GAME"));
         assertEquals("/data/app/files/ez2vr/v1/shared", env.get("EZ2_SHARED_CONTENT_PATH"));
         assertEquals("/data/app/files/ez2vr/v1/content/EntropyZero2",
@@ -199,7 +199,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void valveGamePathIsTheContentRootNotTheWriteDir() {
         Map<String, String> env =
-                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "");
+                EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "", 0, 0);
         assertEquals("/data/app/files/ez2vr/v1/shared", env.get("VALVE_GAME_PATH"));
         assertEquals("/data/app/files/ez2vr/v1/content/EntropyZero2",
                 env.get("SOURCEVR_WRITE_GAME_PATH"));
@@ -209,7 +209,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void engineSynthesisedGamePathMatchesOurFlatArgv() {
         EZ2EngineEnv.Snapshot snap = snapshot("/data/shared/EntropyZero2");
-        Map<String, String> env = EZ2EngineEnv.env(snap, false, "", "");
+        Map<String, String> env = EZ2EngineEnv.env(snap, false, "", "", 0, 0);
         String synthesised = env.get("VALVE_GAME_PATH") + "/" + env.get("SOURCEVR_GAME");
         assertTrue(synthesised, EZ2EngineEnv.flatArgv(snap.modPath, "")
                 .startsWith("-game " + synthesised + " "));
@@ -219,7 +219,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void envHasNoNullValues() {
         Map<String, String> env =
-                EZ2EngineEnv.env(snapshot("/mod"), false, null, "");
+                EZ2EngineEnv.env(snapshot("/mod"), false, null, "", 0, 0);
         for (Map.Entry<String, String> e : env.entrySet()) {
             assertFalse("null value for " + e.getKey(), e.getValue() == null);
         }
@@ -233,14 +233,14 @@ public class EZ2EngineEnvTest {
      */
     @Test
     public void launchArgsPathIsUnsetNotTheConvarDump() {
-        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "");
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), false, "/cfg/ez2vr_user.cfg", "", 0, 0);
         assertEquals("", env.get("SOURCEVR_USER_LAUNCH_ARGS_PATH"));
     }
 
     /** Stable order keeps the on-device env dump diffable between launches. */
     @Test
     public void envOrderIsStable() {
-        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "x", "");
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "x", "", 0, 0);
         java.util.List<String> keys = new java.util.ArrayList<>(env.keySet());
         assertEquals("EZ2_GAME", keys.get(0));
         assertEquals(EZ2EngineEnv.ENV_VR_ENABLE, keys.get(keys.size() - 1));
@@ -254,7 +254,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void envCarriesTheVrArgvAsGameArgs() {
         EZ2EngineEnv.Snapshot snap = snapshot("/data/shared/EntropyZero2");
-        Map<String, String> env = EZ2EngineEnv.env(snap, true, "", "+ez2vr_seated 1");
+        Map<String, String> env = EZ2EngineEnv.env(snap, true, "", "+ez2vr_seated 1", 0, 0);
         String args = env.get(EZ2EngineEnv.ENV_GAME_ARGS);
         assertTrue(args, args.startsWith("-game /data/shared/EntropyZero2"));
         assertTrue(args, args.contains(" -mobile"));
@@ -268,7 +268,7 @@ public class EZ2EngineEnvTest {
     @Test
     public void gameArgsMatchTheFlatArgv() {
         EZ2EngineEnv.Snapshot snap = snapshot("/data/shared/EntropyZero2");
-        Map<String, String> env = EZ2EngineEnv.env(snap, false, "", "+ez2vr_seated 1");
+        Map<String, String> env = EZ2EngineEnv.env(snap, false, "", "+ez2vr_seated 1", 0, 0);
         assertEquals(EZ2EngineEnv.flatArgv(snap.modPath, "+ez2vr_seated 1"),
                 env.get(EZ2EngineEnv.ENV_GAME_ARGS));
     }
@@ -276,7 +276,7 @@ public class EZ2EngineEnvTest {
     /** Through-the-seam switches: on for VR (XR worker + external GL exist). */
     @Test
     public void envArmsTheSeamSwitchesOnVr() {
-        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "", "");
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "", "", 0, 0);
         assertEquals("1", env.get(EZ2EngineEnv.ENV_TRY_ENGINE));
         assertEquals("1", env.get(EZ2EngineEnv.ENV_EXTERNAL_GL));
     }
@@ -284,8 +284,44 @@ public class EZ2EngineEnvTest {
     /** ...and off for flat (SDL owns the window; there is no XR loop). */
     @Test
     public void envDisarmsTheSeamSwitchesOnFlat() {
-        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), false, "", "");
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), false, "", "", 0, 0);
         assertEquals("0", env.get(EZ2EngineEnv.ENV_TRY_ENGINE));
         assertEquals("0", env.get(EZ2EngineEnv.ENV_EXTERNAL_GL));
+    }
+
+    /** Menu FFR choice reaches the runtime: level 2 arms foveation at 2. */
+    @Test
+    public void envArmsFfrFromTheMenuOnVr() {
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "", "", 2, 0);
+        assertEquals("1", env.get(EZ2EngineEnv.ENV_FFR));
+        assertEquals("2", env.get(EZ2EngineEnv.ENV_FFR_LEVEL));
+    }
+
+    /** FFR level 0 (menu default) means the runtime stays off. */
+    @Test
+    public void envLeavesFfrOffAtMenuDefault() {
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "", "", 0, 0);
+        assertEquals("0", env.get(EZ2EngineEnv.ENV_FFR));
+        assertEquals("0", env.get(EZ2EngineEnv.ENV_FFR_LEVEL));
+    }
+
+    /** Out-of-range menu values clamp instead of reaching the runtime raw. */
+    @Test
+    public void envClampsFfrAndPerfMode() {
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), true, "", "", 9, 9);
+        assertEquals("3", env.get(EZ2EngineEnv.ENV_FFR_LEVEL));
+        assertEquals("2", env.get(EZ2EngineEnv.ENV_PERF_MODE));
+        Map<String, String> neg = EZ2EngineEnv.env(snapshot("/mod"), true, "", "", -1, -1);
+        assertEquals("0", neg.get(EZ2EngineEnv.ENV_FFR_LEVEL));
+        assertEquals("0", neg.get(EZ2EngineEnv.ENV_PERF_MODE));
+    }
+
+    /** Flat exports FFR off (no runtime) but still reports the menu posture. */
+    @Test
+    public void envDisarmsFfrOnFlatButReportsPosture() {
+        Map<String, String> env = EZ2EngineEnv.env(snapshot("/mod"), false, "", "", 2, 1);
+        assertEquals("0", env.get(EZ2EngineEnv.ENV_FFR));
+        assertEquals("2", env.get(EZ2EngineEnv.ENV_FFR_LEVEL));
+        assertEquals("1", env.get(EZ2EngineEnv.ENV_PERF_MODE));
     }
 }

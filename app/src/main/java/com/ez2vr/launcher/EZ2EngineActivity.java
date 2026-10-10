@@ -293,7 +293,8 @@ public class EZ2EngineActivity extends NativeActivity {
         EZ2EngineEnv.Snapshot snap = EZ2EngineEnv.resolve(this, userCfgNote);
         Map<String, String> env =
                 EZ2EngineEnv.env(snap, /* vrEnabled= */ true, userCfgNote,
-                        EZ2VrSettings.buildExtraArgs(this));
+                        EZ2VrSettings.buildExtraArgs(this),
+                        EZ2VrSettings.ffr(this), EZ2VrSettings.perfMode(this));
         EZ2EngineEnv.export(env);
 
         Log.i(TAG, "engine env: game=" + snap.modName
