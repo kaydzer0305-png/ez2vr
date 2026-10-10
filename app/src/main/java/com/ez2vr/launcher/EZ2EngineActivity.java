@@ -270,17 +270,16 @@ public class EZ2EngineActivity extends NativeActivity {
     /**
      * Exports the engine environment with the stereo path explicitly enabled.
      *
-     * <p>No argv is handed over here, and that is not an oversight. This is a
-     * {@code NativeActivity}: nothing calls
-     * {@link com.valvesoftware.ValveActivity2#setArgs}, so the engine's
-     * {@code java_args} buffer stays empty and {@code SetLauncherArgs()} synthesizes
-     * {@code -game} from {@code VALVE_GAME_PATH} + {@code SOURCEVR_GAME}. Those are
-     * the <em>write</em> dir and a bare directory name here, so the VR path
-     * resolves the mod to the wrong tree — see {@link EZ2EngineEnv#flatArgv} for
-     * the same constraint handled properly on the flat side. The fix is an engine
-     * change (have {@code SetLauncherArgs} prefer a content-root-relative
-     * {@code -game}), tracked separately; it does not affect the flat path, which
-     * is what makes the port verifiable now.
+     * <p>No {@code setArgs} is handed over here — this is a {@code NativeActivity}
+     * and nothing calls {@link com.valvesoftware.ValveActivity2#setArgs} — so
+     * the engine's {@code java_args} buffer stays empty. The argv instead rides
+     * along as {@link EZ2EngineEnv#ENV_GAME_ARGS}, which the bootstrap merges
+     * when {@code java_args} is empty (native/ez2vr_argv_snippet.cpp): the same
+     * {@code -game -mobile +exec +ez2vr_*} line the flat path passes to
+     * {@code setArgs}. {@code SetLauncherArgs()} still synthesizes a
+     * {@code -game} fallback underneath, but the env-merged absolute
+     * {@code -game} comes first and the engine takes its FIRST {@code -game},
+     * so the fallback never wins when the merge ran.
      */
     private void setupEngineEnvironment() {
         String userCfgNote;
@@ -293,7 +292,8 @@ public class EZ2EngineActivity extends NativeActivity {
 
         EZ2EngineEnv.Snapshot snap = EZ2EngineEnv.resolve(this, userCfgNote);
         Map<String, String> env =
-                EZ2EngineEnv.env(snap, /* vrEnabled= */ true, userCfgNote);
+                EZ2EngineEnv.env(snap, /* vrEnabled= */ true, userCfgNote,
+                        EZ2VrSettings.buildExtraArgs(this));
         EZ2EngineEnv.export(env);
 
         Log.i(TAG, "engine env: game=" + snap.modName

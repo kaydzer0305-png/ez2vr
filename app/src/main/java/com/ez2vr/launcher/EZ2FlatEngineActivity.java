@@ -194,11 +194,13 @@ public class EZ2FlatEngineActivity extends SDLActivity {
         }
 
         EZ2EngineEnv.Snapshot snap = EZ2EngineEnv.resolve(this, userCfgNote);
-        Map<String, String> env = EZ2EngineEnv.env(snap, /* vrEnabled= */ false, userCfgNote);
+        String extraArgs = EZ2VrSettings.buildExtraArgs(this);
+        Map<String, String> env = EZ2EngineEnv.env(snap, /* vrEnabled= */ false, userCfgNote,
+                extraArgs);
         EZ2EngineEnv.export(env);
 
         String argv = EZ2EngineEnv.flatArgv(
-                snap.modPath, EZ2VrSettings.buildExtraArgs(this));
+                snap.modPath, extraArgs);
 
         Log.i(TAG, "flat env: game=" + snap.modName
                 + " mod=" + snap.modPath

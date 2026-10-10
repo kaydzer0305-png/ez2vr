@@ -1,5 +1,69 @@
 # EZ2 VR port — session handoff (2026-10-03)
 
+## Update (2026-10-10) — ENGINE THROUGH THE SEAM, on device
+
+The VR path now boots the full Source engine and submits real per-eye game
+frames to the compositor while the session holds FOCUSED. Off-head proof
+(Quest 3S, two runs, `ez2.log`): UNKNOWN→IDLE→READY→begun→frame pump→first
+present→SYNCHRONIZED→VISIBLE→FOCUSED in ~35 ms; engine boots on the XR
+share-group EGL context, response scripts parse clean (982 rules, no RBTree
+overflow), all 31 modules load, per-eye Source RTs allocate at full 1680x1760,
+`submit eye=0/1 via bound RT` flows repeatedly, intro map loads
+("This map is not final!!"), signon reaches "Redownloading all lightmaps".
+Process + both threads alive 5+ min later (engine thread burning a full core =
+game loop running, not wedged), heartbeat fresh, zero crashes/ANRs/fallbacks.
+Screencap is black — expected off-head (it captures the 2D display pipeline,
+not the HMD panels), so pixels are proven by submits, not by screenshot. A
+human wear-test must still confirm the intro map in stereo + controllers.
+
+What was built (launcher repo, uncommitted):
+- `EZ2EngineEnv`: new `EZ2_GAME_ARGS` (full `-game -mobile +exec +ez2vr_*`
+  line, same string as flat setArgs), `EZQUEST_VR_TRY_ENGINE=1`,
+  `EZQUEST_VR_EXTERNAL_GL=1` on VR (0 on flat); 4 new JVM tests (59 green).
+- `ez2/vr/hl2vr|hl2bodyvr|hl2bodyhla/cfg/vr_{core,body,hands}.cfg`: real
+  posture, every convar verified against game/client+game/server (caught
+  wrong physcannon names, nonexistent viewmodel_offset_*, a cheat-blocked
+  cam pin, and a `cl_bobcycle 0` divide-by-zero before they shipped).
+- `ez2/overlay/cfg/vr_bindings_ez2.cfg`: opt-in EZ2 arsenal binds (entity
+  names verified vs source-ez2) + the VR action table for vr_input.cpp.
+- `ez2vr_boot.cfg` execs the three layer cfgs; README status/remaining-work
+  updated (this file: see below for engine side).
+
+What was built (engine repo, uncommitted):
+- `public/filesystem_init.cpp`: mount `VR_CONTENT_PATH` layers as GAME
+  search paths (log: "mounted 3 VR_CONTENT_PATH layer(s)").
+- `launcher/android/main.cpp`: merge `EZ2_GAME_ARGS` when `java_args` is
+  empty (log: "merged 23 EZ2_GAME_ARGS token(s)"); quote-aware tokenizer,
+  fail-closed on unterminated quote.
+- `appframework/sdlmgr.cpp`: `EZQUEST_VR_EXTERNAL_GL=1` skips SDL video init
+  + window + swap; binds XR share-group context; MakeContextCurrent rebinds;
+  never `Error()` from the headless branch (see next).
+- `launcher/android/ezquest_vr_present.cpp`: engine gets its OWN 1x1 pbuffer
+  (sharing the XR thread's pbuffer was EGL_BAD_ACCESS 0x3002 on device).
+- Visibility: `EZQuestVrCopyTracking`/`PublishEyes`/`TrackingValid` +
+  `SetRenderHook`/`Session`/`HeadViews`/`Status`/`FailReason` marked default
+  (tree builds -fvisibility=hidden; `init copy=0x0` was the tell). RTs went
+  1440-fallback → full 1680x1760 once tracking resolved.
+- `sourcevr/ezquest_openxr_vr.cpp`: `XrPosef` field order fixed to
+  position-then-orientation (matches `XrPose`; was a cm-scale mid-eye error).
+
+Bugs found by the device runs, all fixed same session:
+1. Shared-pbuffer EGL_BAD_ACCESS (above) — first seam boot died here.
+2. `Error()` under NativeActivity is itself fatal: Source's error dialog goes
+   through `SDL_ShowMessageBox → Android_JNI_ShowMessageBox` with a NULL
+   jclass → ART abort → SIGABRT kills the healthy XR loop with it (tombstone
+   + `CallStaticObjectMethod received NULL jclass`). Headless paths now Msg +
+   return-false instead. Any future VR-path `Error()` is suspect for the same
+   reason.
+3. Hidden-visibility tracking (above) — engine rendered with identity
+   projection until fixed; proves the "verify dynsym with llvm-nm -D" habit.
+
+Still open: wear-test (above); `npc_citizen_*` convars + ambient wavs (content,
+non-fatal); flat-shot checker squares; engine-side XR action bindings;
+`footstep`/body models + IK (layers carry posture only). Nothing committed in
+either repo (launcher: this file + README + 3 layer cfgs + bindings cfg +
+boot cfg + EngineEnv + 2 activities + tests; engine: 5 files).
+
 ## Update (2026-10-09, wear-test) — VR scene renders in-headset; launcher path holds focus
 
 Wear-tested with a human in the Quest 3S (screen25.png, ez2vr13.log). The

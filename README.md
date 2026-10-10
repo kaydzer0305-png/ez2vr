@@ -66,7 +66,9 @@
 #   local.properties for the SDK path).
 # - SAF content import, resumable + cancellable, atomic .part -> final rename.
 # - Content presence gate, overlay/VR asset staging with content-hash stamps.
-# - VR Settings menu owning the ez2vr_* convars, applied as launch args.
+# - VR Settings menu owning the ez2vr_* convars, applied as launch args on BOTH
+#   paths (flat via setArgs, VR via the EZ2_GAME_ARGS env merge in
+#   launcher/android/main.cpp — the VR NativeActivity has no setArgs).
 # - Engine env + argv export; NativeActivity wired with android.app.lib_name
 #   (= "launcher", i.e. liblauncher.so — matches the EZ1 Quest manifest).
 # - Quest/OpenXR manifest parity with the proven EZ1 manifest: OPENXR +
@@ -78,11 +80,24 @@
 #   screen. The VR path falls back to it automatically when no session comes
 #   up, and a manifest/toggle switch (adb extra: `--es boot_mode flat`) selects
 #   between them.
+# - Through-the-seam VR rendering (2026-10-10, on device): the engine boots on
+#   the XR share-group EGL context (EZQUEST_VR_EXTERNAL_GL=1 bypasses SDL video,
+#   which cannot init under a bare NativeActivity), mounts the mod with the full
+#   `-game -mobile +exec +ez2vr_*` line, allocates per-eye Source RTs at full
+#   swapchain resolution, and submits both eyes through DoDistortionProcessing
+#   while the session holds FOCUSED. Tracking copy resolves (was hidden-visibility).
+# - VR content layers ship real posture, not empty mounts: hl2vr (viewmodel/HUD/
+#   headbob), hl2bodyvr (body-presence pins), hl2bodyhla (gravity-gun interaction
+#   pins) — every convar verified against game/client+game/server in the engine
+#   tree. The engine mounts VR_CONTENT_PATH as GAME search paths; ez2vr_boot.cfg
+#   execs the three layer cfgs. Weapon layout ships as opt-in
+#   vr_bindings_ez2.cfg (entity names verified against the EZ2 reference tree)
+#   plus the VR action table the engine-side input work must implement.
 # - Native-graph gate: the .load manifest is parsed on device and checked
 #   against the installed libs, not just for existence.
 # - Switch-to-flat/VR boot toggle on the launcher, plus adb auto_launch /
 #   boot_mode extras for driving either path headless.
-# - 54 local JVM tests over the Android-free discovery/copy logic, the native
+# - 59 local JVM tests over the Android-free discovery/copy logic, the native
 #   graph parser, the boot-mode resolver, and the engine env builders.
 # - Fail-loud diagnostics ported from the EZ1 port (diag/): session log,
 #   Java crash capture, ANR watchdog, Downloads export, and
@@ -107,27 +122,36 @@
 # meta-data, the launcher toggle, or the adb boot_mode extra.
 #
 # HARD REMAINING WORK (native — the bulk of a real port)
-# NATIVE CONTRACT (started — see native/):
+# NATIVE CONTRACT (shipped — see native/):
 # - native/game-shared-ez2vr/ez2vr_cvars.h — split header (server vs client)
 # - native/game-server-ez2vr/ez2vr_cvars_server.cpp — 6 server convars
 # - native/game-client-ez2vr/ez2vr_cvars_client.cpp — 2 client convars
 # - native/ez2vr_mobile_hook.patch — GameInit -mobile exec (anchored to
 #   source-sdk-2013 sp gameinterface.cpp CServerGameDLL::GameInit)
 # - native/ez2vr_argv_snippet.cpp — EZ2_GAME_ARGS env -> argv merge reference
+#   (now INTEGRATED in ez1-quest-engine launcher/android/main.cpp: VR merges it
+#   when java_args is empty; flat keeps setArgs authoritative)
 # 1. ~~Build Mapbase-based Android ARM64 libs for EZ2~~ DONE — the ez1-
 #    quest-engine builds the ez2 profile for aarch64 and the APK carries
 #    those libs. Current blocker there is the `CUtlRBTree overflow!` engine
 #    error during content load (see HANDOFF.md); a fatal-backtrace hook is
 #    wired in tier0/launcher to capture its stack.
 #    See TRANSPLANT-A.md for the staged milestones M0-M4.
-# 2. Author real overlay/vr assets under app/src/main/assets/ez2/.
-#    Overlay cfgs ship today (ez2vr_boot.cfg, ez2vr_mobile.cfg,
-#    vr_defaults.cfg); the three VR layers (hl2bodyhla, hl2bodyvr, hl2vr) are
-#    still empty and are staged as empty-but-mounted. Do NOT extract
-#    SourceVR's blobs.
-# 3. Per-game launch flags + save dir + controller bindings for EZ2's weapons
-#    (notably the EZ2-specific arsenal vs EZ1). The ez2vr_* locomotion/turn/
-#    visor keys are wired; weapon and vehicle bindings are not.
+# 2. ~~Author real overlay/vr assets under app/src/main/assets/ez2/~~ DONE —
+#    overlay cfgs (ez2vr_boot.cfg, ez2vr_mobile.cfg, vr_defaults.cfg,
+#    vr_bindings_ez2.cfg) plus per-layer posture (vr_core/vr_body/vr_hands.cfg
+#    under ez2/vr/hl2vr, hl2bodyvr, hl2bodyhla). Staged non-empty and mounted.
+#    Full body/hand MODELS + IK remain future engine work; the layers carry
+#    posture + the documented contract, not placeholders that pretend.
+#    Do NOT extract SourceVR's blobs.
+# 3. ~~Per-game launch flags + save dir~~ DONE — flatArgv (-game abs, -mobile,
+#    +execs, menu convars last) is shared by both paths via EZ2_GAME_ARGS;
+#    save dir is the write game dir (SOURCEVR_WRITE_GAME_PATH). Controller
+#    bindings: keyboard fallback + VR action table ship in vr_bindings_ez2.cfg;
+#    engine-side XR action bindings (vr_input.cpp) are the remaining input work.
+# 4. Wear-test the through-the-seam build in-headset (off-head proof holds
+#    FOCUSED + submits; a human must confirm the intro map renders in stereo
+#    and controllers drive).
 #
 # LEGAL
 # - EZ2 game code is open source (entropy-zero org) — follow its license.

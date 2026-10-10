@@ -40,6 +40,40 @@ public final class EZ2EngineEnv {
      */
     public static final String ENV_VR_ENABLE = "EZQUEST_VR_ENABLE";
 
+    /**
+     * Full launch command line for the VR path, exported as one env string.
+     *
+     * <p>The VR host is a NativeActivity: nothing calls
+     * {@code ValveActivity2.setArgs}, so the engine's {@code java_args} buffer
+     * stays empty and {@code SetLauncherArgs()} would synthesize only
+     * {@code -game} — no {@code -mobile}, no {@code +exec}, no menu convars.
+     * The VR path would boot bone-stock retail. Instead the engine merges this
+     * string into its argv when {@code java_args} is empty (see
+     * native/ez2vr_argv_snippet.cpp, integrated in launcher/android/main.cpp),
+     * so both paths honor the identical command line. The flat path exports it
+     * too and ignores it there: {@code java_args} is nonempty on flat, so the
+     * merge is skipped and {@code setArgs} stays authoritative.
+     */
+    public static final String ENV_GAME_ARGS = "EZ2_GAME_ARGS";
+
+    /**
+     * Opt-in, read once by the XR worker after the first presented frame.
+     * {@code =1} spawns the engine boot worker (LauncherMainAndroid) on a
+     * thread sharing the XR EGL share group, so the Source renderer draws
+     * through the seam instead of the built-in diagnostic scene. Exported
+     * {@code =1} on VR, {@code =0} on flat (which has no XR loop to read it).
+     */
+    public static final String ENV_TRY_ENGINE = "EZQUEST_VR_TRY_ENGINE";
+
+    /**
+     * Read by CSDLMgr at video init. {@code =1} skips SDL video/window setup
+     * and binds the XR share-group context instead: a bare NativeActivity has
+     * no SDLActivity behind it, so SDL_Init(VIDEO) cannot succeed there and
+     * used to abort the whole :engine process. Exported {@code =1} on VR,
+     * {@code =0} on flat (SDL owns the window there).
+     */
+    public static final String ENV_EXTERNAL_GL = "EZQUEST_VR_EXTERNAL_GL";
+
     private EZ2EngineEnv() {}
 
     /** Everything the env and argv builders need, already resolved to strings. */
@@ -157,7 +191,9 @@ public final class EZ2EngineEnv {
      * <p>Two disjoint sets, deliberately:
      * <ul>
      *   <li>{@code EZ2_*} — the forward contract for a Mapbase EZ2 fork of
-     *       {@code liblauncher.so}. Nothing in the current engine reads these.
+     *       {@code liblauncher.so}. Nothing in the current engine reads these,
+     *       except {@link #ENV_GAME_ARGS}, which the current bootstrap merges
+     *       (see its javadoc).
      *   <li>{@code APP_DATA_PATH}, {@code NATIVE_LIB_DIR}, {@code SOURCEVR_*},
      *       {@code VALVE_GAME_PATH}, {@code EXTRAS_VPK_PATH} — what the shipped
      *       nillerusr-derived engine <em>actually</em> reads today. Without these
@@ -166,8 +202,14 @@ public final class EZ2EngineEnv {
      * </ul>
      * They cannot shadow each other, so the compat set is safe to drop once a
      * real EZ2 engine build lands.
+     *
+     * @param convarArgs player menu overrides ({@code +ez2vr_* ...}), appended
+     *                   last in {@link #ENV_GAME_ARGS} so they win over boot
+     *                   defaults on the VR path exactly as they do in
+     *                   {@link #flatArgv} on flat
      */
-    public static Map<String, String> env(Snapshot s, boolean vrEnabled, String userCfgNote) {
+    public static Map<String, String> env(Snapshot s, boolean vrEnabled, String userCfgNote,
+                                          String convarArgs) {
         Map<String, String> m = new LinkedHashMap<>();
         // Forward contract.
         m.put("EZ2_GAME", s.modName);
@@ -221,6 +263,15 @@ public final class EZ2EngineEnv {
         // (flatArgv, or the engine's own -game synthesis on the VR path), so the
         // correct value here is "unset", which the engine skips.
         m.put("SOURCEVR_USER_LAUNCH_ARGS_PATH", "");
+        // The VR path's argv. Identical string to the flat path's setArgs line,
+        // so both boots honor -game -mobile +execs + menu overrides. Merged by
+        // the engine only when java_args is empty (VR); skipped on flat.
+        m.put(ENV_GAME_ARGS, flatArgv(s.modPath, convarArgs));
+        // Through-the-seam rendering switches. Read by the XR worker (boot) and
+        // CSDLMgr (external GL context) respectively; the flat path has neither
+        // reader, so exporting 0 there is inert documentation.
+        m.put(ENV_TRY_ENGINE, vrEnabled ? "1" : "0");
+        m.put(ENV_EXTERNAL_GL, vrEnabled ? "1" : "0");
         // Stereo-path opt-out. Must be set explicitly on both paths so the mode
         // never depends on a race between the XR worker and engine init.
         m.put(ENV_VR_ENABLE, vrEnabled ? "1" : "0");
