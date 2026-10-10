@@ -38,6 +38,18 @@ public final class EZ2EngineEnv {
      * claim VR-sized dimensions, and the 3D pass renders into per-eye targets
      * nothing composites. That is a black window, not a degraded picture.
      */
+    /**
+     * First map of Chapter 0: the Bad Cop intro drive. The retail boot chain
+     * (valve.rc) ends in {@code startupmenu} — the GameUI main menu over a
+     * background vista. That menu is mouse-driven VGUI with no HMD path: in
+     * the headset it is a black room with dead controllers and silence, which
+     * is exactly what the first through-the-seam boots showed. This launcher
+     * IS the menu (import, settings, boot toggle), so both engine paths boot
+     * straight into the game instead. The menu stays reachable on flat (Esc);
+     * menu-in-the-HMD (laser pointer) is tracked separately.
+     */
+    public static final String STARTUP_MAP = "ez2_c0_1";
+
     public static final String ENV_VR_ENABLE = "EZQUEST_VR_ENABLE";
 
     /**
@@ -184,6 +196,10 @@ public final class EZ2EngineEnv {
      * the <em>write</em> dir, not the content dir. Naming the mod by bare
      * directory name would therefore resolve to the wrong tree.
      *
+     * <p>Order ends with {@code +map}: the map load must come after every
+     * {@code +exec} and {@code +convar} so the game boots with boot posture
+     * and player overrides already applied.
+     *
      * <p>The token string is split on spaces by {@code strtok} in the engine
      * ({@code launcher/android/main.cpp:88-95}) with no quoting and no escape, so
      * a path containing a space cannot survive the crossing. The depot root is
@@ -208,6 +224,8 @@ public final class EZ2EngineEnv {
         if (convarArgs != null && !convarArgs.isEmpty()) {
             sb.append(' ').append(convarArgs);
         }
+        // Last: boot into the game, not the mouse-driven menu (see STARTUP_MAP).
+        sb.append(" +map ").append(STARTUP_MAP);
         return sb.toString();
     }
 

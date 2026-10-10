@@ -273,6 +273,20 @@ public class EZ2EngineEnvTest {
                 env.get(EZ2EngineEnv.ENV_GAME_ARGS));
     }
 
+    /**
+     * Both paths boot into the intro map, not the mouse-driven GameUI menu
+     * (which has no HMD path: black room, dead controllers, silence). The map
+     * load rides last so boot posture and menu overrides apply first.
+     */
+    @Test
+    public void flatArgvEndsWithTheStartupMap() {
+        String argv = EZ2EngineEnv.flatArgv("/mod", "+ez2vr_seated 1");
+        assertTrue(argv, argv.endsWith(" +map " + EZ2EngineEnv.STARTUP_MAP));
+        int seated = argv.indexOf("+ez2vr_seated 1");
+        int map = argv.indexOf("+map ");
+        assertTrue(argv, seated >= 0 && map > seated);
+    }
+
     /** Through-the-seam switches: on for VR (XR worker + external GL exist). */
     @Test
     public void envArmsTheSeamSwitchesOnVr() {

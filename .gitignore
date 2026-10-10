@@ -22,3 +22,4 @@ Thumbs.db
 # session, never part of the build.
 *.log
 screen*.png
+shot_*
