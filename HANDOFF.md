@@ -1,5 +1,44 @@
 # EZ2 VR port — session handoff (2026-10-03)
 
+## Update (2026-10-10, later) — black room diagnosed (menu, not renderer); stopped at 2% battery
+
+Human wear verdicts (in-headset, ~4 min after boot): **black both eyes, silent,
+dead controllers** — matching the remote captures exactly, so the capture path
+is exonerated. Root cause found in the depot, not the renderer: retail
+`valve.rc` ends in `startupmenu`, so both paths sat at the mouse-driven GameUI
+main menu, which has no HMD path. Fix (committed, on device): shared argv now
+ends `+map ez2_c0_1` (Chapter 0 intro; launcher IS the menu; flat keeps Esc
+access). Menu-in-HMD (laser) stays on the list.
+
+Blit saga, closed: the submit path is now clean — engine-local FBOs wrapping
+the shared textures report COMPLETE with attachment present, zero blit errors
+across full boots, magic-marker sharing MATCH. Earlier 0x506/0x502 were the
+XR-created FBO linkage invisible from the engine context; read/draw-buffer +
+scissor/mask sanitize + LINEAR→NEAREST probe all contributed. Added permanent
+one-shot TGA frame capture (`EZQUEST_VR_SHOT_FRAME` / `ez2shot.req`, since adb
+screencap reads black under immersive). All prior black captures are explained
+by the menu, not the blits.
+
+Verified on device this session: turn axis live (`inputsys=1`; global-dlsym
+returned libengine's CreateInterface — prefer the libinputsystem handle),
+menu FFR/perf env wired (63 tests), EZ2 lastinv profile, layer echo lines on
+flat, VR FOCUSED + submits + lightmaps repeatedly, 64/64 launcher tests green.
+
+New issues (do not chase yet):
+- SensorLock gate: proximity lock latched during an idle gap and self-heals;
+  the shell caches/blocks every launch while it holds focus. Force-stop races
+  lose. Wear-to-clear. (Also: cached launches DO flush on wear — the engine
+  activity came up by itself.)
+- Flat fallback wedge: XR-timeout fallback reboots the engine in-process;
+  native never comes up (ANR precursors with unbounded native_late — this is
+  the ANR-report spam source). Same-process re-init hangs; needs its own look.
+- Stop cause: headset at 2% (charging slowly over the data cable). Resume at
+  20%+. Next: one VR boot with +map → vista check via capture + human eyes.
+
+Commits (nothing pushed): launcher `ce1c1c0` (seam argv/layers/bindings),
+`df9f858` (FFR/perf env), `173581b` (+map); engine `8d9409a4` (seam boot),
+`3fa04ae5` (input resolution), `17d10310` (present/blits/capture).
+
 ## Update (2026-10-10) — ENGINE THROUGH THE SEAM, on device
 
 The VR path now boots the full Source engine and submits real per-eye game
