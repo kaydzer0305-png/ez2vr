@@ -303,6 +303,15 @@ public class EZ2EngineEnvTest {
         assertEquals("0", env.get(EZ2EngineEnv.ENV_EXTERNAL_GL));
     }
 
+    /** The headless-VR message-box guard: no SDL dialog where no SDLActivity exists. */
+    @Test
+    public void envDisablesTheMessageBoxOnVr() {
+        Map<String, String> vr = EZ2EngineEnv.env(snapshot("/mod"), true, "", "", 0, 0);
+        assertEquals("1", vr.get(EZ2EngineEnv.ENV_NO_MSGBOX));
+        Map<String, String> flat = EZ2EngineEnv.env(snapshot("/mod"), false, "", "", 0, 0);
+        assertEquals("0", flat.get(EZ2EngineEnv.ENV_NO_MSGBOX));
+    }
+
     /** Menu FFR choice reaches the runtime: level 2 arms foveation at 2. */
     @Test
     public void envArmsFfrFromTheMenuOnVr() {

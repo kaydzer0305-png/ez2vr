@@ -84,6 +84,16 @@ public final class EZ2EngineEnv {
      * used to abort the whole :engine process. Exported {@code =1} on VR,
      * {@code =0} on flat (SDL owns the window there).
      */
+    /**
+     * Read by the engine's Sys_Error path. {@code =1} skips the SDL message
+     * box: under the bare XR NativeActivity there is no SDLActivity, so the
+     * box calls into a NULL jclass and ART aborts the whole :engine process
+     * (SIGABRT, seen on device) — including the healthy XR loop — for what
+     * should be a clean error exit with logs. Exported {@code =1} on VR,
+     * {@code =0} on flat (SDL owns a window there and the dialog works).
+     */
+    public static final String ENV_NO_MSGBOX = "EZQUEST_VR_NO_MSGBOX";
+
     public static final String ENV_EXTERNAL_GL = "EZQUEST_VR_EXTERNAL_GL";
 
     /**
@@ -320,6 +330,7 @@ public final class EZ2EngineEnv {
         // reader, so exporting 0 there is inert documentation.
         m.put(ENV_TRY_ENGINE, vrEnabled ? "1" : "0");
         m.put(ENV_EXTERNAL_GL, vrEnabled ? "1" : "0");
+        m.put(ENV_NO_MSGBOX, vrEnabled ? "1" : "0");
         // Menu-owned frame pacing. The runtime applies FFR + refresh when the
         // XR session comes up (see EZQuestVrApplyFfrAndRefresh); refresh stays
         // on the runtime default (90 Hz) until the menu owns a refresh pref.
