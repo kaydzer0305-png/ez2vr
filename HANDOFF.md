@@ -1,5 +1,80 @@
 # EZ2 VR port — session handoff (2026-10-03)
 
+## Update (2026-10-31) — overflow root cause confirmed; EZ2 Touch table wired
+
+The content-load `CUtlRBTree overflow!` is not an EZ2 script set that outgrew
+a 16-bit tree. The container that dies is `CUtlDict<Criteria, short>` inside
+`CResponseSystem` (`CUtlMap<const char*, Criteria, short>`, 32767 slots).
+`ParseRule` used to fall through on Mapbase's `applyContextToSquad` /
+`applyContextToEnemy`, treat the keyword as an inline criterion
+(`[%s%03i]`, which is the `[CitizenAllyKilled32766]` name pattern), and then
+ping-pong: `ParseOneCriterion` ungets a root `rule` token and `ParseRule`
+reads it again. That fabricates criteria until `CUtlRBTree::NewNode` calls
+`Error("CUtlRBTree overflow!")`. Widening the index would turn the loop into
+an OOM. Mapbase itself still uses `short`, and a device boot after the
+keyword fix parsed 982 rules. That fix is on engine master (`cb1fcc1b2b`):
+the two keywords, plus an `IsRootCommand` bailout so a later unknown keyword
+cannot spin. This session adds an EZ2-only ceiling refusal at 32760 inserts
+so a future desync logs the criterion name and skips it instead of killing
+the process. EZ1/HL2 parsing is unchanged (`#ifdef EZ2`).
+
+Quest Touch now drives the EZ2 action table in `vr_bindings_ez2.cfg` section 2.
+OpenXR actions stay in `launcher/android/vr_input.cpp` (trigger/squeeze stay
+floats; the Touch profile has no click paths, and suggesting those paths
+fails the whole binding call). Commands are `ezquest_vr_sourceinput.cpp`,
+EZ2 profile only (`SOURCEVR_GAME=EntropyZero2`). EZ1 keeps the kick /
+nightvision / manhack chord layout.
+
+| Control | Command |
+|---|---|
+| right trigger (>0.60) | `+attack` |
+| right grip (>0.60) | `+attack2` |
+| left trigger | `+use` |
+| left grip | `+reload` |
+| right A | next arsenal group, the cfg's 1–6 `use` chains |
+| right B | `impulse 101` (sv_cheats, same as the `g` key) |
+| left X | `lastinv` |
+| left Y | `+showscores` while held |
+| left stick | `ez2vr_locomotion_mode`: 0 smooth `+move`, 1 `ez2vr_blink` ~96 units, 2 dash blink ~192 units plus a shove |
+| right stick | `ez2vr_turn_mode`: 0 snap (`ez2vr_turn_snap_angle`, default 30), 1 smooth yaw |
+| right stick click | `impulse 100` (flashlight; not cheat-gated) |
+| left stick click | `+speed` in smooth mode |
+
+`ez2vr_blink` is a server command (on-foot hull trace along flattened eye
+yaw). It no-ops in a vehicle, so the APC is driven in smooth mode. Convars
+are read live through vstdlib `ICvar`, so the VR Settings menu applies
+without a restart. Menu button still sends `cancelselect` (not in the table).
+
+### In-headset checklist (not run — no headset on this machine)
+
+1. VR boot to `ez2_c0_1`. Logcat must not contain `CUtlRBTree overflow!`.
+   `EZDIAG: response script done` should show a finite rule/criteria count,
+   and the intro should be visible in both eyes with head tracking.
+2. Right trigger fires the current weapon; release stops. Right grip
+   alt-fires (physcannon punt, or SMG/OICW alt if carried).
+3. Left trigger `+use`s a nearby prop or button. Left grip reloads.
+4. Right A cycles the six arsenal groups in cfg order (crowbar group, then
+   pistols, then automatics, then heavy, then grenades, then slam). A missing
+   weapon prints one line and does not clear the binding.
+5. Left X swaps to the previous weapon (`lastinv`).
+6. Left Y holds the scoreboard and releases it on let-go.
+7. Right stick click toggles the flashlight. It should keep working after
+   `ez2vr_flashlight_mount 1` (head) vs `0` (hand) — the click only toggles;
+   the mount convar is separate and still not a placed model.
+8. Default sticks: left stick walks (full deflection sprints), right stick
+   snap-turns about 30°. Then `ez2vr_turn_mode 1` and confirm smooth yaw.
+9. `ez2vr_locomotion_mode 1`: a stick flick blinks ~2.4 m and must not walk
+   continuously. Mode `2`: a longer blink plus a short shove. Stick back to
+   center, then flick again, to re-arm. Both no-op while driving the APC;
+   set mode `0` to drive.
+10. Right B (`impulse 101`) does nothing until `sv_cheats 1`, then gives the
+    HL2 kit. That is the same gate as the keyboard `g` bind, not a new one.
+11. Confirm an EZ1 boot (if you still have that profile) still kick/nightvision/
+    manhack-chords, and does not blink or cycle the EZ2 groups.
+12. Launcher JVM suite is `./gradlew :app:testDebugUnitTest` (65 tests, this tree). The
+    engine change is untested on device; rebuild with the ez2 waf profile and
+    the existing EZ1 profile before sideloading.
+
 ## Update (2026-10-10, later) — black room diagnosed (menu, not renderer); stopped at 2% battery
 
 Human wear verdicts (in-headset, ~4 min after boot): **black both eyes, silent,

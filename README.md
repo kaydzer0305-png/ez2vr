@@ -92,12 +92,12 @@
 #   tree. The engine mounts VR_CONTENT_PATH as GAME search paths; ez2vr_boot.cfg
 #   execs the three layer cfgs. Weapon layout ships as opt-in
 #   vr_bindings_ez2.cfg (entity names verified against the EZ2 reference tree)
-#   plus the VR action table the engine-side input work must implement.
+#   plus the VR action table the engine maps in ezquest_vr_sourceinput.cpp.
 # - Native-graph gate: the .load manifest is parsed on device and checked
 #   against the installed libs, not just for existence.
 # - Switch-to-flat/VR boot toggle on the launcher, plus adb auto_launch /
 #   boot_mode extras for driving either path headless.
-# - 59 local JVM tests over the Android-free discovery/copy logic, the native
+# - 65 local JVM tests over the Android-free discovery/copy logic, the native
 #   graph parser, the boot-mode resolver, and the engine env builders.
 # - Fail-loud diagnostics ported from the EZ1 port (diag/): session log,
 #   Java crash capture, ANR watchdog, Downloads export, and
@@ -133,9 +133,13 @@
 #   when java_args is empty; flat keeps setArgs authoritative)
 # 1. ~~Build Mapbase-based Android ARM64 libs for EZ2~~ DONE — the ez1-
 #    quest-engine builds the ez2 profile for aarch64 and the APK carries
-#    those libs. Current blocker there is the `CUtlRBTree overflow!` engine
-#    error during content load (see HANDOFF.md); a fatal-backtrace hook is
-#    wired in tier0/launcher to capture its stack.
+#    those libs. The content-load `CUtlRBTree overflow!` is fixed: it was the
+#    response-rule parser treating Mapbase's `applyContextToSquad` as an
+#    inline criterion and fabricating entries until the signed-short criteria
+#    dict (32767) called Error(). Not a content-set that outgrew the index —
+#    Mapbase ships the same short, and a device boot parsed 982 rules. The
+#    keywords, the root-command bailout, and a ceiling refusal (log and skip,
+#    don't Error) are in the engine. See HANDOFF.md.
 #    See TRANSPLANT-A.md for the staged milestones M0-M4.
 # 2. ~~Author real overlay/vr assets under app/src/main/assets/ez2/~~ DONE —
 #    overlay cfgs (ez2vr_boot.cfg, ez2vr_mobile.cfg, vr_defaults.cfg,
@@ -147,11 +151,17 @@
 # 3. ~~Per-game launch flags + save dir~~ DONE — flatArgv (-game abs, -mobile,
 #    +execs, menu convars last) is shared by both paths via EZ2_GAME_ARGS;
 #    save dir is the write game dir (SOURCEVR_WRITE_GAME_PATH). Controller
-#    bindings: keyboard fallback + VR action table ship in vr_bindings_ez2.cfg;
-#    engine-side XR action bindings (vr_input.cpp) are the remaining input work.
+#    bindings: keyboard fallback + VR action table ship in vr_bindings_ez2.cfg.
+#    Quest Touch drives that table on the EZ2 profile (vr_input.cpp action
+#    set + ezquest_vr_sourceinput.cpp). EZ1's chord layout is unchanged.
+#    Smooth / teleport / dash follow ez2vr_locomotion_mode; snap / smooth
+#    turn follow ez2vr_turn_mode. impulse 101 (right B) still needs sv_cheats,
+#    same as the keyboard bind.
 # 4. Wear-test the through-the-seam build in-headset (off-head proof holds
 #    FOCUSED + submits; a human must confirm the intro map renders in stereo
-#    and controllers drive).
+#    and the Quest Touch table in vr_bindings_ez2.cfg actually drives). The
+#    checklist is at the top of HANDOFF.md. No headset was available for the
+#    code change that landed the mapping.
 #
 # LEGAL
 # - EZ2 game code is open source (entropy-zero org) — follow its license.
