@@ -153,10 +153,16 @@
 #    save dir is the write game dir (SOURCEVR_WRITE_GAME_PATH). Controller
 #    bindings: keyboard fallback + VR action table ship in vr_bindings_ez2.cfg.
 #    Quest Touch drives that table on the EZ2 profile (vr_input.cpp action
-#    set + ezquest_vr_sourceinput.cpp). EZ1's chord layout is unchanged.
+#    set + ezquest_vr_sourceinput.cpp). EZ1's chord layout is unchanged,
+#    including left stick click as sprint. On EZ2, left stick click holds
+#    +jump (+jump on press, -jump on release) in smooth and both blink
+#    modes; full stick deflection still sprints. Blink is passed the stick
+#    with the same signs as smooth locomotion, not snapped to cardinals.
 #    Smooth / teleport / dash follow ez2vr_locomotion_mode; snap / smooth
 #    turn follow ez2vr_turn_mode. impulse 101 (right B) still needs sv_cheats,
-#    same as the keyboard bind.
+#    same as the keyboard bind. Engine source of truth:
+#    https://github.com/kaydzer0305-png/ez1-quest-engine/pull/34
+#    (branch cursor/ez2-touch-actions-11e1).
 # 4. Wear-test the through-the-seam build in-headset (off-head proof holds
 #    FOCUSED + submits; a human must confirm the intro map renders in stereo
 #    and the Quest Touch table in vr_bindings_ez2.cfg actually drives). The

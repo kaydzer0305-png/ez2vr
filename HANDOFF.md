@@ -35,15 +35,18 @@ nightvision / manhack chord layout.
 | right B | `impulse 101` (sv_cheats, same as the `g` key) |
 | left X | `lastinv` |
 | left Y | `+showscores` while held |
-| left stick | `ez2vr_locomotion_mode`: 0 smooth `+move`, 1 `ez2vr_blink` ~96 units, 2 dash blink ~192 units plus a shove |
+| left stick | `ez2vr_locomotion_mode`: 0 smooth `+move`, 1 `ez2vr_blink` ~96 units, 2 dash blink ~192 units plus a shove. Blink gets the stick with the same signs as smooth (`ly` forward, `lx` right), not a cardinal snap |
+| left stick click | `+jump` on press, `-jump` on release, in smooth and both blink modes. Full deflection still sprints |
 | right stick | `ez2vr_turn_mode`: 0 snap (`ez2vr_turn_snap_angle`, default 30), 1 smooth yaw |
 | right stick click | `impulse 100` (flashlight; not cheat-gated) |
-| left stick click | `+speed` in smooth mode |
 
 `ez2vr_blink` is a server command (on-foot hull trace along flattened eye
 yaw). It no-ops in a vehicle, so the APC is driven in smooth mode. Convars
 are read live through vstdlib `ICvar`, so the VR Settings menu applies
 without a restart. Menu button still sends `cancelselect` (not in the table).
+Left stick click used to be `+speed` in smooth mode only; sprint is full
+deflection now, and the click is jump on every locomotion mode. EZ1 still
+uses that click for `+speed`.
 
 ### In-headset checklist (not run — no headset on this machine)
 
@@ -62,28 +65,29 @@ without a restart. Menu button still sends `cancelselect` (not in the table).
    `ez2vr_flashlight_mount 1` (head) vs `0` (hand) — the click only toggles;
    the mount convar is separate and still not a placed model.
 8. Default sticks: left stick walks (full deflection sprints), right stick
-   snap-turns about 30°. Then `ez2vr_turn_mode 1` and confirm smooth yaw.
-9. `ez2vr_locomotion_mode 1`: a stick flick blinks ~2.4 m and must not walk
-   continuously. Mode `2`: a longer blink plus a short shove. Stick back to
-   center, then flick again, to re-arm. Both no-op while driving the APC;
-   set mode `0` to drive.
+   snap-turns about 30°. Left stick click jumps on press and stops on
+   release, including while walking and in both blink modes. Then
+   `ez2vr_turn_mode 1` and confirm smooth yaw.
+9. `ez2vr_locomotion_mode 1`: a stick flick blinks ~2.4 m along the stick
+   (diagonal included, same signs as walk) and must not walk continuously.
+   Mode `2`: a longer blink plus a short shove. Stick back to center, then
+   flick again, to re-arm. Both no-op while driving the APC; set mode `0`
+   to drive. Jump still works in these modes.
 10. Right B (`impulse 101`) does nothing until `sv_cheats 1`, then gives the
     HL2 kit. That is the same gate as the keyboard `g` bind, not a new one.
 11. Confirm an EZ1 boot (if you still have that profile) still kick/nightvision/
-    manhack-chords, and does not blink or cycle the EZ2 groups.
+    manhack-chords, with left stick click as sprint, and does not blink,
+    jump from that click, or cycle the EZ2 groups.
 12. Launcher JVM suite is `./gradlew :app:testDebugUnitTest` (65 tests, this tree). The
     engine change is untested on device; rebuild with the ez2 waf profile and
     the existing EZ1 profile before sideloading.
 
-The engine commit could not be pushed from this environment (`cursor[bot]` is
-403 on `kaydzer0305-png/ez1-quest-engine`). It is `native/ez2-touch-actions.patch`
-(one commit, applies on current engine `master`):
-
-```
-cd ez1-quest-engine
-git checkout -b cursor/ez2-touch-actions-0d4b
-git am /path/to/ez2vr/native/ez2-touch-actions.patch
-```
+Engine source of truth is
+[ez1-quest-engine#34](https://github.com/kaydzer0305-png/ez1-quest-engine/pull/34)
+(`cursor/ez2-touch-actions-11e1`), which includes the jump binding and the
+analog blink direction. `native/ez2-touch-actions.patch` was the earlier
+snapshot (cardinal blink, left stick click as `+speed`) and has been removed
+so it cannot be applied over that branch.
 
 ## Update (2026-10-10, later) — black room diagnosed (menu, not renderer); stopped at 2% battery
 
