@@ -75,6 +75,16 @@ without a restart. Menu button still sends `cancelselect` (not in the table).
     engine change is untested on device; rebuild with the ez2 waf profile and
     the existing EZ1 profile before sideloading.
 
+The engine commit could not be pushed from this environment (`cursor[bot]` is
+403 on `kaydzer0305-png/ez1-quest-engine`). It is `native/ez2-touch-actions.patch`
+(one commit, applies on current engine `master`):
+
+```
+cd ez1-quest-engine
+git checkout -b cursor/ez2-touch-actions-0d4b
+git am /path/to/ez2vr/native/ez2-touch-actions.patch
+```
+
 ## Update (2026-10-10, later) — black room diagnosed (menu, not renderer); stopped at 2% battery
 
 Human wear verdicts (in-headset, ~4 min after boot): **black both eyes, silent,
